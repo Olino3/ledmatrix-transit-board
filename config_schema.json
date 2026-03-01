@@ -10,38 +10,75 @@
     },
     "display_duration": {
       "type": "number",
-      "description": "How long to display (seconds)",
+      "description": "How long to display this plugin (seconds)",
       "default": 15,
       "minimum": 5,
       "maximum": 300
     },
-    "gtfs_rt_url": {
+    "agency_id": {
       "type": "string",
-      "description": "URL of the GTFS Realtime TripUpdates feed for your transit agency",
-      "default": ""
-    },
-    "api_key": {
-      "type": "string",
-      "description": "API key for the feed, if required (e.g. MTA requires one)",
-      "default": ""
+      "enum": ["mta", "custom"],
+      "description": "Transit agency preset. 'mta' = NYC MTA; 'custom' = supply your own GTFS-RT URL.",
+      "default": "mta"
     },
     "station_id": {
       "type": "string",
-      "description": "Stop ID for the station to monitor (from GTFS static stops.txt)",
+      "description": "GTFS Stop ID for the station to monitor (e.g. 'R16' for Times Sq-42 St). Search by name in the web UI.",
       "default": ""
     },
     "route_ids": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Filter to specific route IDs (e.g. [\"1\",\"2\",\"3\"]). Empty means all routes at the station.",
+      "description": "Filter to specific route IDs (e.g. [\"N\",\"Q\"]). Empty = all routes at the station.",
       "default": []
     },
     "max_arrivals": {
       "type": "integer",
-      "description": "Number of upcoming arrivals to display",
-      "default": 2,
+      "description": "Maximum upcoming arrivals to show per direction",
+      "default": 3,
       "minimum": 1,
       "maximum": 5
+    },
+    "per_direction_secs": {
+      "type": "number",
+      "description": "Seconds to display each direction card before cycling to the next",
+      "default": 4,
+      "minimum": 2,
+      "maximum": 30
+    },
+    "live_priority": {
+      "type": "boolean",
+      "description": "Pre-empt other plugins when a train is imminent (within live_threshold_mins)",
+      "default": false
+    },
+    "live_threshold_mins": {
+      "type": "integer",
+      "description": "Minutes-until-arrival that triggers live priority takeover",
+      "default": 2,
+      "minimum": 1,
+      "maximum": 10
+    },
+    "window_minutes": {
+      "type": "integer",
+      "description": "How many minutes ahead to show arrivals",
+      "default": 30,
+      "minimum": 5,
+      "maximum": 60
+    },
+    "gtfs_rt_url": {
+      "type": "string",
+      "description": "GTFS-RT TripUpdates feed URL (required when agency_id = 'custom')",
+      "default": ""
+    },
+    "api_key": {
+      "type": "string",
+      "description": "API key for the feed (optional, only needed by some agencies)",
+      "default": ""
+    },
+    "api_key_header": {
+      "type": "string",
+      "description": "HTTP header name for the API key (default: 'x-api-key')",
+      "default": "x-api-key"
     },
     "transition": {
       "type": "object",
