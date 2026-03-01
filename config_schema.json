@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Transit Board Configuration",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Enable or disable the plugin",
+      "default": true
+    },
+    "display_duration": {
+      "type": "number",
+      "description": "How long to display (seconds)",
+      "default": 15,
+      "minimum": 5,
+      "maximum": 300
+    },
+    "gtfs_rt_url": {
+      "type": "string",
+      "description": "URL of the GTFS Realtime TripUpdates feed for your transit agency",
+      "default": ""
+    },
+    "api_key": {
+      "type": "string",
+      "description": "API key for the feed, if required (e.g. MTA requires one)",
+      "default": ""
+    },
+    "station_id": {
+      "type": "string",
+      "description": "Stop ID for the station to monitor (from GTFS static stops.txt)",
+      "default": ""
+    },
+    "route_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Filter to specific route IDs (e.g. [\"1\",\"2\",\"3\"]). Empty means all routes at the station.",
+      "default": []
+    },
+    "max_arrivals": {
+      "type": "integer",
+      "description": "Number of upcoming arrivals to display",
+      "default": 2,
+      "minimum": 1,
+      "maximum": 5
+    },
+    "transition": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["redraw", "fade", "slide", "wipe"],
+          "default": "redraw"
+        },
+        "speed": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  "required": ["enabled"],
+  "additionalProperties": false
+}
