@@ -151,9 +151,9 @@ def unsorted_feed_bytes():
 
 SAMPLE_STOPS_CSV = """\
 Station ID,Complex ID,GTFS Stop ID,Division,Line,Stop Name,Borough,Daytime Routes,Structure,GTFS Latitude,GTFS Longitude,North Direction Label,South Direction Label
-R16,R16,R16,IND,Queens Blvd,Times Sq-42 St,M,N Q R W,Subway,40.7549,-73.9878,Uptown & Queens,Downtown & Brooklyn
-D17,D17,D17,IND,Concourse,Bedford Park Blvd,Bx,B D,Subway,40.8729,-73.8826,Norwood-205 St,Manhattan
-A32,A32,A32,IND,8th Av,Fulton St,M,A C,Subway,40.7206,-74.0089,Uptown & The Bronx,Downtown & Brooklyn
+436,436,R16,IND,Queens Blvd,Times Sq-42 St,M,N Q R W,Subway,40.7549,-73.9878,Uptown & Queens,Downtown & Brooklyn
+321,321,D17,IND,Concourse,Bedford Park Blvd,Bx,B D,Subway,40.8729,-73.8826,Norwood-205 St,Manhattan
+289,289,A32,IND,8th Av,Fulton St,M,A C,Subway,40.7206,-74.0089,Uptown & The Bronx,Downtown & Brooklyn
 """
 
 
@@ -170,7 +170,7 @@ def malformed_stops_csv_path(tmp_path):
     content = (
         "Station ID,Complex ID,GTFS Stop ID,Division,Line,Stop Name,Borough,"
         "Daytime Routes,Structure,GTFS Latitude,GTFS Longitude,North Direction Label,South Direction Label\n"
-        "R16,R16,R16,IND,Queens Blvd,Times Sq-42 St,M,N Q R W,Subway,40.7549,-73.9878,Uptown & Queens,Downtown & Brooklyn\n"
+        "436,436,R16,IND,Queens Blvd,Times Sq-42 St,M,N Q R W,Subway,40.7549,-73.9878,Uptown & Queens,Downtown & Brooklyn\n"
         "BADROW,,\n"
     )
     p = tmp_path / "malformed.csv"
@@ -185,8 +185,8 @@ def malformed_stops_csv_path(tmp_path):
 DATANY_RESPONSE = {
     "data": [
         {
-            "Station ID": "R16",
-            "Complex ID": "R16",
+            "Station ID": "436",
+            "Complex ID": "436",
             "GTFS Stop ID": "R16",
             "Division": "IND",
             "Line": "Queens Blvd",
@@ -200,8 +200,8 @@ DATANY_RESPONSE = {
             "South Direction Label": "Downtown & Brooklyn",
         },
         {
-            "Station ID": "D17",
-            "Complex ID": "D17",
+            "Station ID": "321",
+            "Complex ID": "321",
             "GTFS Stop ID": "D17",
             "Division": "IND",
             "Line": "Concourse",

@@ -93,7 +93,8 @@ class TransitBoardPlugin(BasePlugin):
         else:
             self._maybe_advance_index()
             group = self._groups[self._current_idx % len(self._groups)]
-            self._renderer.draw_direction_group(group, image)
+            threshold = self.config.get("live_threshold_mins", 2)
+            self._renderer.draw_direction_group(group, image, imminent_threshold=threshold)
 
         self.display_manager.image.paste(image)
         self.display_manager.update_display()

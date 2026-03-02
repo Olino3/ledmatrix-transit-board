@@ -58,10 +58,10 @@ class TestFeedRouting:
 
 
 class TestStopsSource:
-    def test_stops_source_primary_is_datany_url(self, mta):
-        """Primary stops source is the data.ny.gov API."""
+    def test_stops_source_primary_url_is_empty(self, mta):
+        """Primary URL is intentionally empty: data.ny.gov requires a Socrata app token."""
         source = mta.get_stops_source()
-        assert "data.ny.gov" in source.primary_url
+        assert source.primary_url == ""
 
     def test_stops_source_fallback_is_webmta_csv_url(self, mta):
         """Fallback stops source is the web.mta.info CSV."""

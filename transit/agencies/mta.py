@@ -43,8 +43,11 @@ MTA_LINE_COLORS: Dict[str, str] = {
 _ALL_MAJOR_FEEDS = ["123456", "nqrw", "bdfm", "ace", "g", "jz", "l", "7", "si"]
 
 # Column mapping for MTA Stations.csv
+# "GTFS Stop ID" (e.g. "R16") is the user-facing stop identifier.
+# "Station ID" is the numeric internal ID; stored for reference.
 MTA_CSV_COLUMN_MAP = {
-    "stop_id": "Station ID",
+    "stop_id": "GTFS Stop ID",
+    "station_id": "Station ID",
     "name": "Stop Name",
     "routes": "Daytime Routes",
     "north_label": "North Direction Label",
@@ -83,7 +86,7 @@ class MtaAgency(TransitAgency):
 
     def get_stops_source(self) -> StopsSource:
         return StopsSource(
-            primary_url="https://data.ny.gov/api/v3/views/5f5g-n3cz/query.json",
+            primary_url="",  # data.ny.gov requires a Socrata app token; skip to fallback
             fallback_url="http://web.mta.info/developers/data/nyct/subway/Stations.csv",
             column_map=MTA_CSV_COLUMN_MAP,
         )

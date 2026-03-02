@@ -44,7 +44,7 @@ _COLOR_NO_DATA = (150, 150, 150)    # gray — no data
 _COLOR_BLACK = (0, 0, 0)
 _COLOR_WHITE = (255, 255, 255)
 
-_IMMINENT_THRESHOLD = 2  # minutes
+_IMMINENT_THRESHOLD_DEFAULT = 2  # minutes — used when no config value is available
 
 
 def _load_font(path: Path, size: int) -> ImageFont.FreeTypeFont:
@@ -99,7 +99,10 @@ class TransitRenderer:
             self._badge_size = 7
 
     def draw_direction_group(
-        self, group: DirectionGroup, image: Image.Image
+        self,
+        group: DirectionGroup,
+        image: Image.Image,
+        imminent_threshold: int = _IMMINENT_THRESHOLD_DEFAULT,
     ) -> None:
         """
         Draw route badge + direction label + arrival times onto image.
@@ -107,6 +110,10 @@ class TransitRenderer:
         Layout (32px display):
           Row 1-12:  [BADGE] direction_label
           Row 13-22: arrival times
+
+        Args:
+            imminent_threshold: Minutes below which an arrival is highlighted in
+                yellow. Should match live_threshold_mins from plugin config.
         """
         draw = ImageDraw.Draw(image)
         w, h = image.size
@@ -153,7 +160,7 @@ class TransitRenderer:
         sorted_arrivals = sorted(group.arrivals)
         time_x = 2
         for mins in sorted_arrivals[:3]:
-            color = _COLOR_IMMINENT if mins < _IMMINENT_THRESHOLD else _COLOR_NORMAL
+            color = _COLOR_IMMINENT if mins < imminent_threshold else _COLOR_NORMAL
             text = f"{mins}m"
             draw.text((time_x, time_y), text, font=self._font_time, fill=color)
             try:

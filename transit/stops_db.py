@@ -30,7 +30,8 @@ except ImportError:
 # Default column mapping for MTA Stations.csv
 # Maps internal field name → CSV column header
 CSV_COLUMN_MAP = {
-    "stop_id": "Station ID",
+    "stop_id": "GTFS Stop ID",
+    "station_id": "Station ID",
     "name": "Stop Name",
     "routes": "Daytime Routes",
     "north_label": "North Direction Label",
@@ -42,6 +43,7 @@ CSV_COLUMN_MAP = {
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS stops (
     stop_id      TEXT PRIMARY KEY,
+    station_id   TEXT,
     name         TEXT NOT NULL,
     routes       TEXT,
     north_label  TEXT,
@@ -53,6 +55,9 @@ CREATE TABLE IF NOT EXISTS stops (
 """
 _CREATE_INDEX = (
     "CREATE INDEX IF NOT EXISTS idx_stops_name ON stops(name COLLATE NOCASE);"
+)
+_CREATE_INDEX_STATION_ID = (
+    "CREATE INDEX IF NOT EXISTS idx_stops_station_id ON stops(station_id);"
 )
 
 
@@ -80,6 +85,16 @@ class StopsDatabase:
         with self._connect() as conn:
             conn.execute(_CREATE_TABLE)
             conn.execute(_CREATE_INDEX)
+            conn.execute(_CREATE_INDEX_STATION_ID)
+            # Migration: add station_id column when upgrading from pre-0.3 schema.
+            # If ALTER TABLE succeeds, the column was missing — old data used numeric
+            # stop_ids instead of GTFS IDs, so clear it to force a clean re-bootstrap.
+            try:
+                conn.execute("ALTER TABLE stops ADD COLUMN station_id TEXT DEFAULT ''")
+                conn.execute("DELETE FROM stops")
+                logger.info("stops_db: schema migrated (added station_id), stale data cleared")
+            except sqlite3.OperationalError:
+                pass  # Column already present — no migration needed
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
@@ -172,12 +187,13 @@ class StopsDatabase:
         if not raw_name:
             raise ValueError("empty name")
         name = raw_name.strip()
+        station_id = row.get(column_map.get("station_id", ""), "").strip()
         routes = row.get(column_map.get("routes", ""), "").strip()
         north = row.get(column_map.get("north_label", ""), "").strip()
         south = row.get(column_map.get("south_label", ""), "").strip()
         lat_raw = row.get(column_map.get("lat", ""), "0") or "0"
         lng_raw = row.get(column_map.get("lng", ""), "0") or "0"
-        return (stop_id, name, routes, north, south, float(lat_raw), float(lng_raw))
+        return (stop_id, station_id, name, routes, north, south, float(lat_raw), float(lng_raw))
 
     def _import_datany_json(self, payload: dict, column_map: dict) -> None:
         """Handle data.ny.gov API response (JSON with 'data' key)."""
@@ -194,9 +210,10 @@ class StopsDatabase:
         with self._connect() as conn:
             conn.executemany(
                 """
-                INSERT INTO stops (stop_id, name, routes, north_label, south_label, lat, lng)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO stops (stop_id, station_id, name, routes, north_label, south_label, lat, lng)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(stop_id) DO UPDATE SET
+                    station_id=excluded.station_id,
                     name=excluded.name,
                     routes=excluded.routes,
                     north_label=excluded.north_label,
@@ -245,6 +262,7 @@ class StopsDatabase:
         routes = [r.strip() for r in routes_raw.split() if r.strip()]
         return StationInfo(
             stop_id=row["stop_id"],
+            station_id=row["station_id"] or "",
             name=row["name"],
             routes=routes,
             north_label=row["north_label"] or "Uptown",

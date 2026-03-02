@@ -18,11 +18,31 @@ Ships with a built-in **NYC MTA** preset and a **Custom** adapter for any GTFS-R
 - **Real-time arrivals** — polls GTFS-RT TripUpdates feeds every 30 seconds
 - **Direction cycling** — one route+direction card at a time, cycling every N seconds
 - **Colored route badges** — filled rectangle using each route's official color
-- **Imminent highlight** — arrivals within the threshold shown in yellow for urgency
-- **Live priority** — pre-empts other plugins when a train is < N minutes away
+- **Imminent highlight** — arrivals within `live_threshold_mins` shown in yellow
+- **Live priority** — pre-empts other plugins when a train is `< live_threshold_mins` away
 - **Station search** — find stop IDs by name in the LEDMatrix web UI (SQLite-backed)
 - **Resilient data** — stale arrivals kept on network error; SQLite persists stop data offline
 - **Multi-agency** — NYC MTA built in; add any GTFS-RT city via the custom adapter or new presets
+
+---
+
+## Quick Start (NYC MTA)
+
+1. Install the plugin (see [Installation](#installation))
+2. Find your station's GTFS Stop ID (see [Finding your station ID](#finding-your-station-id))
+3. Add to `config/config.json`:
+
+```jsonc
+{
+  "transit-board": {
+    "enabled": true,
+    "agency_id": "mta",
+    "station_id": "R16"
+  }
+}
+```
+
+4. Restart the display. The plugin bootstraps its station database on first run.
 
 ---
 
@@ -35,7 +55,7 @@ Ships with a built-in **NYC MTA** preset and a **Custom** adapter for any GTFS-R
 
 ### Manual / Development
 
-This plugin ships as a git submodule inside the LEDMatrix repository at `plugin-repos/transit-board`.
+The plugin ships as a git submodule inside the LEDMatrix repository at `plugin-repos/transit-board`.
 
 ```bash
 # From the LEDMatrix root directory
@@ -97,11 +117,26 @@ Open the web UI → **Plugins** → **Transit Board** → **Configure**, or edit
 | `per_direction_secs` | number | `4` | Seconds per direction card before cycling to the next direction |
 | `max_arrivals` | integer | `3` | Max upcoming arrivals shown per direction (1–5) |
 | `live_priority` | boolean | `false` | Pre-empt other plugins when a train is imminent |
-| `live_threshold_mins` | integer | `2` | Minutes until arrival that triggers live priority (1–10) |
+| `live_threshold_mins` | integer | `2` | Minutes until arrival that triggers live priority **and** yellow highlight (1–10) |
 | `window_minutes` | integer | `30` | How far ahead to show arrivals in minutes (5–60) |
 | `gtfs_rt_url` | string | `""` | TripUpdates feed URL — **required** when `agency_id = "custom"` |
-| `api_key` | string | `""` | API key for the feed (most open feeds don't need this) |
+| `api_key` | string | `""` | API key for the feed (most open feeds don't need this — store in secrets, see below) |
 | `api_key_header` | string | `"x-api-key"` | HTTP header name used to send `api_key` |
+
+### Storing an API key securely
+
+If your agency requires an API key, keep it out of `config.json` by placing it in `config/config_secrets.json` instead (this file is gitignored). The LEDMatrix runtime merges secrets into plugin configs automatically:
+
+```jsonc
+// config/config_secrets.json
+{
+  "transit-board": {
+    "api_key": "your-actual-key-here"
+  }
+}
+```
+
+A template entry is provided in `config/config_secrets.template.json`.
 
 ---
 
@@ -109,22 +144,48 @@ Open the web UI → **Plugins** → **Transit Board** → **Configure**, or edit
 
 ### NYC MTA
 
-Set `agency_id` to `"mta"`. No API key required.
+Set `agency_id` to `"mta"`. No API key required — the MTA GTFS-RT feeds are open.
 
-**Finding your station ID:**
+#### Finding your station ID
 
-1. Open the web UI → **Plugins** → **Transit Board** → search the **Station** field by name
-   (e.g. `"Times Sq"` → select `R16`)
-2. Or look up the [MTA Stations CSV](http://web.mta.info/developers/data/nyct/subway/Stations.csv) — the **Station ID** column is your `station_id`
+The `station_id` field expects the **GTFS Stop ID** for your station (e.g. `R16`, `B18`, `D17`).
 
-Station data is downloaded automatically on first run from [data.ny.gov](https://data.ny.gov/api/v3/views/5f5g-n3cz/query.json) and cached locally in SQLite so the app works even when the endpoint is unreachable.
+**Option 1 — Station search in the web UI:**
+
+Open the web UI → **Plugins** → **Transit Board** → use the **Search Stations** action and type part of the station name (e.g. `"79 St"`, `"Atlantic Av"`, `"Times Sq"`).
+
+> The search requires the station database to be bootstrapped first. Enable the plugin and let it run once, then try again.
+
+**Option 2 — MTA Stations CSV:**
+
+Download [Stations.csv](http://web.mta.info/developers/data/nyct/subway/Stations.csv) from the MTA developer portal. The **GTFS Stop ID** column (third column) is your `station_id` — not the numeric **Station ID** column.
+
+```
+Station ID  Complex ID  GTFS Stop ID  ...  Stop Name        Daytime Routes
+65          65          B18                79 St            D
+436         436         R16                Times Sq-42 St   N Q R W
+```
+
+Use the value from **GTFS Stop ID** (`B18`, `R16`), not the numeric ID (`65`, `436`).
+
+#### Station database
+
+On first run the plugin downloads `Stations.csv` from the MTA developer site and stores it in a local SQLite database (in the LEDMatrix cache directory). This database is used for:
+
+- Resolving direction labels (`"Uptown & Queens"`, `"Coney Island"`)
+- Selecting only the relevant GTFS-RT feeds for your station's routes
+
+If bootstrap fails (no network), the plugin still displays arrivals with generic `"Uptown"` / `"Downtown"` labels and fetches all feed groups until the database is available.
 
 **Override with your own CSV:**
 
-If you have a local MTA stations file, you can bootstrap the database from it by temporarily setting
-`user_csv_path` to its absolute path and restarting (the plugin will import it and remove the setting).
-The expected columns are: `Station ID`, `Stop Name`, `Daytime Routes`,
-`North Direction Label`, `South Direction Label`, `GTFS Latitude`, `GTFS Longitude`.
+If you have a local MTA stations file, you can bootstrap the database from it:
+
+1. Call `StopsDatabase.import_csv(path, column_map=MTA_CSV_COLUMN_MAP)` from a script, or
+2. Pass `user_csv_path` to `db.bootstrap(agency, user_csv_path="/path/to/file.csv")`
+
+The expected columns match the standard MTA Stations CSV:
+`GTFS Stop ID`, `Station ID`, `Stop Name`, `Daytime Routes`, `North Direction Label`, `South Direction Label`, `GTFS Latitude`, `GTFS Longitude`.
 
 ### Custom / Any GTFS-RT Agency
 
@@ -134,17 +195,17 @@ Set `agency_id` to `"custom"` and supply:
 {
   "transit-board": {
     "agency_id": "custom",
-    "station_id": "place-davis",          // GTFS stop_id for your station
+    "station_id": "place-davis",
     "gtfs_rt_url": "https://cdn.mbta.com/realtime/TripUpdates.pb",
-    "api_key": "",                         // optional
-    "api_key_header": "x-api-key"         // optional
+    "api_key": "",
+    "api_key_header": "x-api-key"
   }
 }
 ```
 
-The `stop_id` must match what appears in the agency's GTFS static feed (`stops.txt`).
-For the stop name search to work in the web UI, you must also provide the agency's stops
-via a custom CSV (same columns as MTA, or adapt the column map — see **Adding an Agency** below).
+The `station_id` must match a `stop_id` from the agency's GTFS static feed (`stops.txt`). The plugin matches by prefix — so stop ID `B18` matches both `B18N` and `B18S` in the feed.
+
+For the station name search to work in the web UI you must bootstrap the stops database manually (see `StopsDatabase.import_csv`).
 
 ---
 
@@ -153,7 +214,8 @@ via a custom CSV (same columns as MTA, or adapt the column map — see **Adding 
 1. Create `transit/agencies/<name>.py` implementing `TransitAgency`:
 
 ```python
-from transit.agencies.base import TransitAgency, StopsSource
+from transit.agencies.base import TransitAgency
+from transit.models import StopsSource
 
 class MyAgency(TransitAgency):
     agency_id = "myagency"
@@ -163,21 +225,20 @@ class MyAgency(TransitAgency):
         self._config = config
 
     def get_feed_urls(self, stop_id: str, routes: list) -> list:
-        # Return one or more GTFS-RT TripUpdates URLs for these routes.
         return ["https://realtime.myagency.com/TripUpdates.pb"]
 
     def get_api_headers(self) -> dict:
-        # Return auth headers, or {} if the feed is open.
         key = self._config.get("api_key", "")
         header = self._config.get("api_key_header", "x-api-key")
         return {header: key} if key else {}
 
     def get_stops_source(self) -> StopsSource:
         return StopsSource(
-            primary_url="https://myagency.com/stops.json",  # or ""
-            fallback_url="https://myagency.com/stops.csv",  # or ""
-            column_map={                                      # or None for MTA defaults
-                "stop_id": "stop_id",
+            primary_url="",
+            fallback_url="https://myagency.com/stops.csv",
+            column_map={
+                "stop_id": "stop_id",       # GTFS stop_id column — must match station_id config
+                "station_id": "station_id", # optional internal numeric ID
                 "name": "stop_name",
                 "routes": "routes",
                 "north_label": "north_label",
@@ -216,7 +277,7 @@ Row 12-22:  Arrival times   "2m  7m  15m"
 ```
 
 - **Badge**: 10×10 px filled rectangle in the route's official color; route letter centered in contrasting white or black
-- **Arrival colors**: green for normal arrivals; yellow for arrivals within `live_threshold_mins`
+- **Arrival colors**: green for normal arrivals; yellow for arrivals within `live_threshold_mins` — the same threshold that controls live priority takeover
 - **16-pixel-tall panels**: smaller badge (7×7 px) and fonts scale down automatically
 
 ---
@@ -230,11 +291,23 @@ Row 12-22:  Arrival times   "2m  7m  15m"
 .venv/bin/pytest plugin-repos/transit-board/test/ -v
 
 # Or from inside the plugin repo with LEDMatrix's venv
-cd plugin-repos/transit-board
-../../.venv/bin/pytest test/ -v
+cd /path/to/ledmatrix-transit-board
+/path/to/LEDMatrix/.venv/bin/pytest test/ -v
 ```
 
-All 48 tests should pass. Tests use real protobuf parsing and real PIL image rendering — no mock shortcuts.
+57 tests covering protobuf parsing, SQLite import/lookup/migration, renderer pixel output, MTA feed routing, and plugin lifecycle. Tests use real protobuf encoding and real PIL image rendering.
+
+### Emulator Render Test
+
+To visually verify the plugin against live data without hardware:
+
+```bash
+cd /path/to/LEDMatrix
+EMULATOR=true .venv/bin/python scripts/render_plugin.py \
+  --plugin transit-board \
+  --config '{"agency_id":"mta","station_id":"R16"}' \
+  --output /tmp/transit.png
+```
 
 ### Repository Structure
 
@@ -244,6 +317,8 @@ ledmatrix-transit-board/
 ├── manifest.json            # Plugin metadata (id, version, entry_point)
 ├── config_schema.json       # JSON Schema for web UI config form
 ├── requirements.txt         # gtfs-realtime-bindings, protobuf, requests, Pillow
+├── scripts/
+│   └── search_stations.py   # Web UI action: search station names → GTFS Stop IDs
 ├── transit/
 │   ├── models.py            # Arrival, StationInfo, StopsSource, DirectionGroup
 │   ├── agency_registry.py   # REGISTRY dict + get_agency() factory
@@ -261,43 +336,66 @@ ledmatrix-transit-board/
     ├── test_mta_agency.py
     ├── test_agency_registry.py
     ├── test_renderer.py
-    └── test_manager.py
+    ├── test_manager.py
+    └── test_search_stations.py
 ```
 
 ### Data Flow
 
 ```
-config.station_id + config.route_ids
-        │
-        ▼
-StopsDatabase.lookup(station_id)  ──► north_label / south_label
-        │
-        ▼
-MtaAgency.get_feed_urls(stop_id, routes)  ──► ["https://api-endpoint.mta.info/..."]
-        │
-        ▼
-GtfsRtClient.fetch_arrivals(urls, headers, stop_id, window)  ──► List[Arrival]
-        │
-        ▼
-TransitBoardPlugin._group_arrivals(arrivals, station_info)  ──► List[DirectionGroup]
-        │
-        ▼
-TransitRenderer.draw_direction_group(group, image)  ──► PIL Image
-        │
-        ▼
-display_manager.update_display()
+config.station_id  ──► StopsDatabase.lookup(gtfs_stop_id)
+                              │
+                              ├──► north_label / south_label / routes
+                              │
+                              ▼
+             MtaAgency.get_feed_urls(stop_id, routes)
+                              │
+                              ▼
+  GtfsRtClient.fetch_arrivals(urls, headers, stop_id, window)
+                              │
+                              ▼
+         List[Arrival]  (route_id, direction_label, minutes)
+                              │
+                              ▼
+     _group_arrivals()  ──► List[DirectionGroup]
+                              │
+                              ▼
+  TransitRenderer.draw_direction_group(group, image, imminent_threshold)
+                              │
+                              ▼
+              display_manager.update_display()
 ```
 
 ---
 
 ## Changelog
 
+### v0.3.0
+
+- **Fix:** MTA CSV column mapping corrected — `station_id` config now correctly maps to the **GTFS Stop ID** column (`R16`, `B18`) rather than the numeric **Station ID** column (`436`, `65`). Station lookups now resolve direction labels and route-specific feed selection.
+- **Fix:** Added `station_id` (numeric CSV ID) column to the stops database alongside `gtfs_stop_id` — both are now stored as in the reference implementation.
+- **Fix:** data.ny.gov primary stops URL removed (endpoint requires Socrata app token; previously produced a silent 403 on every bootstrap).
+- **Fix:** `live_threshold_mins` now drives the renderer's yellow highlight in addition to live priority — previously hardcoded at 2 minutes regardless of config.
+- **Fix:** Added `compatible_versions` to `manifest.json` (was failing schema validation on install).
+- **Infra:** `config_secrets.template.json` in the LEDMatrix repo now includes a `transit-board` entry for `api_key`.
+- **Tests:** Fixtures updated to match real MTA CSV structure (numeric Station IDs); 57 tests pass.
+
+### v0.2.2
+
+- Register `search_stations` as a web UI action in `manifest.json`
+
+### v0.2.1
+
+- Add station search action script (`scripts/search_stations.py`)
+
 ### v0.2.0
+
 - Full GTFS-RT implementation — NYC MTA + custom agency support
-- SQLite-backed station search with data.ny.gov API and CSV fallback
+- SQLite-backed station search with CSV fallback
 - Direction cycling with configurable dwell time
 - Live priority takeover for imminent arrivals
 - 48-test TDD suite
 
 ### v0.1.0
+
 - Initial stub (display and update not implemented)

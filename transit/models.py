@@ -18,7 +18,8 @@ class Arrival:
 @dataclass
 class StationInfo:
     """Static information about a transit stop."""
-    stop_id: str
+    stop_id: str         # GTFS Stop ID (e.g., "R16") — primary lookup key
+    station_id: str      # Numeric Station ID from CSV (e.g., "436")
     name: str
     routes: List[str]    # ["N", "Q", "R", "W"]
     north_label: str     # "Uptown & Queens"
