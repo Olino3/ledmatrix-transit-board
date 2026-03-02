@@ -35,16 +35,32 @@ Ships with a built-in **NYC MTA** preset and a **Custom** adapter for any GTFS-R
 
 ### Manual / Development
 
-```bash
-# Clone into LEDMatrix plugin repos
-git clone https://github.com/your-org/ledmatrix-transit-board \
-    /root/ledmatrix-transit-board
+This plugin ships as a git submodule inside the LEDMatrix repository at `plugin-repos/transit-board`.
 
-# Create the runtime symlink
-ln -sf /root/ledmatrix-transit-board /root/LEDMatrix/plugins/transit-board
+```bash
+# From the LEDMatrix root directory
+
+# Initialise the submodule (included in a full --recursive clone, or run explicitly)
+git submodule update --init plugin-repos/transit-board
+
+# Create the runtime symlink (plugins/ is gitignored)
+ln -sf "$PWD/plugin-repos/transit-board" plugins/transit-board
 
 # Install Python dependencies into LEDMatrix's venv
-/root/LEDMatrix/.venv/bin/pip install -r /root/ledmatrix-transit-board/requirements.txt
+.venv/bin/pip install -r plugin-repos/transit-board/requirements.txt
+```
+
+**Contributing / working on the plugin source directly:**
+
+```bash
+# Fork https://github.com/Olino3/ledmatrix-transit-board, then point the submodule at your fork
+cd plugin-repos/transit-board
+git remote set-url origin https://github.com/<your-fork>/ledmatrix-transit-board
+git checkout -b my-feature
+
+# Or clone your fork separately and link it
+git clone https://github.com/<your-fork>/ledmatrix-transit-board
+ln -sf "$PWD/ledmatrix-transit-board" /path/to/LEDMatrix/plugins/transit-board
 ```
 
 ---
@@ -210,8 +226,12 @@ Row 12-22:  Arrival times   "2m  7m  15m"
 ### Running Tests
 
 ```bash
-cd /root/ledmatrix-transit-board
-/root/LEDMatrix/.venv/bin/pytest test/ -v
+# From the LEDMatrix root
+.venv/bin/pytest plugin-repos/transit-board/test/ -v
+
+# Or from inside the plugin repo with LEDMatrix's venv
+cd plugin-repos/transit-board
+../../.venv/bin/pytest test/ -v
 ```
 
 All 48 tests should pass. Tests use real protobuf parsing and real PIL image rendering — no mock shortcuts.
