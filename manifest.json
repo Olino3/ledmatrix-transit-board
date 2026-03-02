@@ -20,5 +20,16 @@
     "transit-board"
   ],
   "update_interval": 30,
-  "default_duration": 15
+  "default_duration": 15,
+  "web_ui_actions": [
+    {
+      "id": "search_stations",
+      "label": "Search Stations",
+      "description": "Find a station by name to get its GTFS Stop ID for the station_id field",
+      "type": "script",
+      "script": "scripts/search_stations.py",
+      "input_label": "Station name",
+      "input_placeholder": "e.g. Times Square, 79 St, Atlantic Av"
+    }
+  ]
 }
