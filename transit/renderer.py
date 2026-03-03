@@ -179,7 +179,7 @@ class TransitRenderer:
 
         # --- Arrival times ---
         time_gap = max(3, round(5 * scale))
-        sorted_arrivals = sorted(group.arrivals)[:3]
+        sorted_arrivals = sorted(group.arrivals)
         time_texts = [f"{mins}m" for mins in sorted_arrivals]
 
         # Measure all labels to center them and anchor vertically

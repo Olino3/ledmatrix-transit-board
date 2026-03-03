@@ -117,6 +117,28 @@ class TestAdaptiveDisplay:
         assert any(p != (0, 0, 0) for p in pixels), "Small display: renderer drew nothing"
 
 
+class TestMaxArrivals:
+    def test_renderer_respects_more_than_three_arrivals(self, mock_display_manager):
+        """Group with 5 arrivals renders differently than the same group capped at 3."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(mock_display_manager)
+
+        group_three = _make_group(arrivals=[1, 5, 10])
+        group_five  = _make_group(arrivals=[1, 5, 10, 15, 20])
+
+        image_three = Image.new("RGB", (128, 32), (0, 0, 0))
+        image_five  = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group_three, image_three)
+        renderer.draw_direction_group(group_five,  image_five)
+
+        assert list(image_three.getdata()) != list(image_five.getdata()), (
+            "Rendering 5 arrivals should produce a different image than rendering 3; "
+            "renderer must not hard-cap at 3"
+        )
+
+
 class TestImminentHighlight:
     def test_imminent_arrival_rendered_in_highlight_color(self, mock_display_manager):
         """Arrival < 2 min uses a different (highlight) color than normal arrivals."""

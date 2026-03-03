@@ -5,6 +5,7 @@ Ported and generalised from:
   /root/star-wars-dashboard/backend/utils/subway.py :: parse_mta_feed()
 """
 
+import logging
 import time
 from typing import Dict, List
 
@@ -12,6 +13,12 @@ import requests
 from google.transit import gtfs_realtime_pb2
 
 from transit.models import Arrival
+
+try:
+    from src.logging_config import get_logger as _get_logger
+    logger = _get_logger("transit.gtfs_rt_client")
+except ImportError:
+    logger = logging.getLogger(__name__)
 
 
 class GtfsRtError(Exception):
@@ -38,10 +45,8 @@ class GtfsRtClient:
             window_minutes: Maximum minutes ahead to include arrivals.
 
         Returns:
-            Arrivals sorted by minutes ascending.
-
-        Raises:
-            GtfsRtError: If any feed URL returns a non-200 response.
+            Arrivals sorted by minutes ascending. Individual URL failures are
+            logged as warnings; arrivals from successful URLs are still returned.
         """
         arrivals: List[Arrival] = []
 
@@ -49,18 +54,18 @@ class GtfsRtClient:
             try:
                 response = requests.get(url, headers=headers, timeout=10)
                 if response.status_code != 200:
-                    raise GtfsRtError(
-                        f"Feed returned HTTP {response.status_code}: {url}"
+                    logger.warning(
+                        "Feed returned HTTP %d, skipping: %s",
+                        response.status_code, url,
                     )
+                    continue
                 arrivals.extend(
                     self._parse_feed_bytes(
                         response.content, stop_id, window_minutes
                     )
                 )
-            except GtfsRtError:
-                raise
             except requests.RequestException as exc:
-                raise GtfsRtError(f"Network error fetching {url}: {exc}") from exc
+                logger.warning("Network error fetching %s, skipping: %s", url, exc)
 
         arrivals.sort(key=lambda a: a.minutes)
         return arrivals

@@ -2,8 +2,8 @@
   "id": "transit-board",
   "name": "Transit Board",
   "version": "0.2.12",
-  "author": "Your Name",
-  "description": "Displays real-time transit arrivals for a configured station using GTFS Realtime feeds. Compatible with NYC MTA, DC Metro, BART, Chicago L, and any GTFS-RT agency.",
+  "author": "Olin Osborne III",
+  "description": "Displays real-time transit arrivals for a configured station using GTFS Realtime feeds. Ships with NYC MTA support; works with any GTFS-RT agency via the custom adapter.",
   "entry_point": "manager.py",
   "class_name": "TransitBoardPlugin",
   "compatible_versions": [
@@ -32,7 +32,8 @@
       "type": "script",
       "script": "scripts/search_stations.py",
       "input_label": "Station name",
-      "input_placeholder": "e.g. Times Square, 79 St, Atlantic Av"
+      "input_placeholder": "e.g. Times Square, 79 St, Atlantic Av",
+      "autocomplete": true
     }
   ]
 }

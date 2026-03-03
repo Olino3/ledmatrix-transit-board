@@ -2,7 +2,7 @@
 
 Displays real-time transit arrivals on your LED matrix using live **GTFS-RT** feeds.
 
-Ships with a built-in **NYC MTA** preset and a **Custom** adapter for any GTFS-RT compatible agency worldwide.
+Ships with a built-in **NYC MTA** preset and a **Custom** adapter for any GTFS-RT compatible agency worldwide. Additional agency presets (DC Metro, BART, Chicago L) are planned.
 
 ```
 ┌──────────────────────────────┐
@@ -48,12 +48,20 @@ Ships with a built-in **NYC MTA** preset and a **Custom** adapter for any GTFS-R
 
 ## Installation
 
-### Via LEDMatrix Plugin Store
+### Recommended: LEDMatrix Plugin Store (web UI)
 
-1. Open the LEDMatrix web UI → **Plugins** → **Store**
-2. Search for **Transit Board** and click **Install**
+The easiest way to install Transit Board is through the LEDMatrix web UI:
 
-### Manual / Development
+1. Open the LEDMatrix web UI in your browser
+2. Navigate to **Plugins** → **Store**
+3. Search for **Transit Board** and click **Install**
+4. Configure the plugin under **Plugins** → **Transit Board** → **Configure**
+
+No command-line steps are required. The web UI handles dependency installation and symlink setup automatically.
+
+### Alternative: Command Line
+
+If you prefer to install manually, or if the Plugin Store is unavailable, you can install from the command line.
 
 The plugin ships as a git submodule inside the LEDMatrix repository at `plugin-repos/transit-board`.
 
@@ -69,6 +77,8 @@ ln -sf "$PWD/plugin-repos/transit-board" plugins/transit-board
 # Install Python dependencies into LEDMatrix's venv
 .venv/bin/pip install -r plugin-repos/transit-board/requirements.txt
 ```
+
+Restart the LEDMatrix service after installation.
 
 **Contributing / working on the plugin source directly:**
 
@@ -206,6 +216,8 @@ Set `agency_id` to `"custom"` and supply:
 The `station_id` must match a `stop_id` from the agency's GTFS static feed (`stops.txt`). The plugin matches by prefix — so stop ID `B18` matches both `B18N` and `B18S` in the feed.
 
 For the station name search to work in the web UI you must bootstrap the stops database manually (see `StopsDatabase.import_csv`).
+
+> **Note:** The web UI station search currently only searches the MTA stops database. Custom agency stops must be looked up directly in the agency's own `stops.txt` file.
 
 ---
 

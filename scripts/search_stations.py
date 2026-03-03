@@ -5,7 +5,7 @@ Invoked by the LEDMatrix web UI via execute_plugin_action.
 Reads JSON params from stdin, queries the stops DB, writes JSON to stdout.
 
 Input (stdin):  {"query": "station name"}
-Output (stdout): {"status": "success"|"error", "message": "..."}
+Output (stdout): {"status": "success"|"error", "results": [...], "message": "..."}
 """
 import json
 import os
@@ -52,39 +52,6 @@ def search_stops(db_path: str, query: str, limit: int = 10) -> List[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Formatting
-# ---------------------------------------------------------------------------
-
-def format_results(stations: List[dict]) -> str:
-    """Return a human-readable table of search results."""
-    if not stations:
-        return "No stations found."
-
-    col_id = max(len(s["stop_id"]) for s in stations)
-    col_name = max(len(s["name"]) for s in stations)
-    col_routes = max(len(s.get("routes") or "") for s in stations)
-
-    col_id = max(col_id, 7)       # "GTFS ID"
-    col_name = max(col_name, 12)  # "Station Name"
-    col_routes = max(col_routes, 6)  # "Routes"
-
-    header = (
-        f"{'GTFS ID':<{col_id}}  {'Station Name':<{col_name}}  "
-        f"{'Routes':<{col_routes}}  Northbound -> Southbound"
-    )
-    sep = "-" * len(header)
-    lines = [header, sep]
-    for s in stations:
-        north = s.get("north_label") or "-"
-        south = s.get("south_label") or "-"
-        lines.append(
-            f"{s['stop_id']:<{col_id}}  {s['name']:<{col_name}}  "
-            f"{(s.get('routes') or ''):<{col_routes}}  {north} -> {south}"
-        )
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -98,15 +65,13 @@ def run() -> None:
         return
 
     query = (params.get("query") or "").strip()
+    agency_id = (params.get("agency_id") or "mta").strip()
 
     if not query:
-        print(json.dumps({
-            "status": "error",
-            "message": "Enter a station name to search (e.g. '79 St', 'Times Square', 'Atlantic Av').",
-        }))
+        print(json.dumps({"status": "success", "results": [], "message": ""}))
         return
 
-    db_path = _find_db_path()
+    db_path = _find_db_path(agency_id)
     if not db_path:
         print(json.dumps({
             "status": "error",
@@ -126,14 +91,16 @@ def run() -> None:
     if not stations:
         print(json.dumps({
             "status": "success",
-            "message": f"No stations found matching '{query}'. Try a shorter or different search term.",
+            "results": [],
+            "message": f"No stations found matching '{query}'.",
         }))
         return
 
-    table = format_results(stations)
+    n = len(stations)
     print(json.dumps({
         "status": "success",
-        "message": table,
+        "results": stations,
+        "message": f"Found {n} station{'s' if n != 1 else ''} matching '{query}'",
     }))
 
 

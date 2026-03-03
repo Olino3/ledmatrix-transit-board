@@ -70,22 +70,54 @@ class TestParseArrivals:
 class TestFetchArrivals:
     """Tests for the HTTP fetch layer."""
 
-    def test_fetch_raises_gtfs_error_on_non_200(self, sample_feed_bytes):
-        """GtfsRtError is raised when any feed URL returns non-200."""
-        from transit.gtfs_rt_client import GtfsRtClient, GtfsRtError
+    def test_fetch_skips_failed_url_and_returns_empty_for_single_url(self, sample_feed_bytes):
+        """A single URL returning non-200 is skipped with a warning; returns empty list."""
+        from transit.gtfs_rt_client import GtfsRtClient
 
         client = GtfsRtClient()
         mock_response = Mock()
         mock_response.status_code = 503
-        mock_response.raise_for_status.side_effect = Exception("503 error")
 
         with patch("transit.gtfs_rt_client.requests.get", return_value=mock_response):
-            with pytest.raises(GtfsRtError):
-                client.fetch_arrivals(
-                    feed_urls=["http://feed.example.com/gtfs"],
-                    headers={},
-                    stop_id="R16",
-                )
+            result = client.fetch_arrivals(
+                feed_urls=["http://feed.example.com/gtfs"],
+                headers={},
+                stop_id="R16",
+            )
+        assert result == [], "Failed single URL should return empty list, not raise"
+
+    def test_fetch_returns_partial_arrivals_when_one_url_fails(self, sample_feed_bytes):
+        """When one of multiple URLs fails, arrivals from the successful URL are returned."""
+        from transit.gtfs_rt_client import GtfsRtClient
+
+        client = GtfsRtClient()
+
+        fail_response = Mock()
+        fail_response.status_code = 503
+
+        ok_response = Mock()
+        ok_response.status_code = 200
+        ok_response.content = sample_feed_bytes
+
+        responses = [fail_response, ok_response]
+        call_count = 0
+
+        def fake_get(url, **kwargs):
+            nonlocal call_count
+            r = responses[call_count]
+            call_count += 1
+            return r
+
+        with patch("transit.gtfs_rt_client.requests.get", side_effect=fake_get):
+            result = client.fetch_arrivals(
+                feed_urls=["http://bad.example.com/gtfs", "http://good.example.com/gtfs"],
+                headers={},
+                stop_id="R16",
+            )
+
+        assert len(result) > 0, (
+            "Arrivals from the successful URL should be returned even when another URL fails"
+        )
 
     def test_fetch_passes_headers_to_request(self, sample_feed_bytes):
         """Custom headers are forwarded to the HTTP GET request."""

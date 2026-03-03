@@ -73,20 +73,8 @@ def test_search_no_match_returns_empty(populated_db):
     assert results == []
 
 
-def test_format_results_table():
-    """format_results returns a readable table string."""
-    stations = [
-        {"stop_id": "B18", "name": "79 St", "routes": "D",
-         "north_label": "Manhattan", "south_label": "Coney Island"},
-    ]
-    output = search_mod.format_results(stations)
-    assert "B18" in output
-    assert "79 St" in output
-    assert "Manhattan" in output
-
-
 def test_run_outputs_json(populated_db, capsys):
-    """run() reads params from stdin and prints JSON to stdout."""
+    """run() reads params from stdin and prints JSON with results array to stdout."""
     params = json.dumps({"query": "79 St"})
     with patch("sys.stdin") as mock_stdin:
         mock_stdin.read.return_value = params
@@ -96,7 +84,11 @@ def test_run_outputs_json(populated_db, capsys):
     captured = capsys.readouterr()
     output = json.loads(captured.out)
     assert output["status"] == "success"
-    assert "B18" in output["message"]
+    assert isinstance(output["results"], list)
+    stop_ids = {r["stop_id"] for r in output["results"]}
+    assert "B18" in stop_ids
+    assert "R28" in stop_ids
+    assert "79 St" in output["message"]
 
 
 def test_run_handles_missing_db(capsys):
@@ -114,7 +106,7 @@ def test_run_handles_missing_db(capsys):
 
 
 def test_run_handles_empty_query(capsys):
-    """Empty query returns an informative error."""
+    """Empty query returns success with empty results (no red error flash in UI)."""
     params = json.dumps({"query": ""})
     with patch("sys.stdin") as mock_stdin:
         mock_stdin.read.return_value = params
@@ -122,7 +114,46 @@ def test_run_handles_empty_query(capsys):
 
     captured = capsys.readouterr()
     output = json.loads(captured.out)
-    assert output["status"] == "error"
+    assert output["status"] == "success"
+    assert output["results"] == []
+
+
+def test_find_db_path_uses_provided_agency_id(tmp_path):
+    """_find_db_path("custom") looks for transit_stops_custom.db, not transit_stops_mta.db."""
+    custom_db = tmp_path / "transit_stops_custom.db"
+    custom_db.touch()
+
+    with patch.object(search_mod, "_CANDIDATE_CACHE_DIRS", [str(tmp_path)]):
+        result = search_mod._find_db_path("custom")
+
+    assert result == str(custom_db), (
+        f"Expected to find transit_stops_custom.db but got: {result}"
+    )
+
+
+def test_run_uses_agency_id_from_params(tmp_path, capsys):
+    """run() reads agency_id from stdin params and searches the correct DB."""
+    custom_db = str(tmp_path / "transit_stops_custom.db")
+    conn = sqlite3.connect(custom_db)
+    conn.execute("""
+        CREATE TABLE stops (
+            stop_id TEXT PRIMARY KEY, name TEXT NOT NULL,
+            routes TEXT, north_label TEXT, south_label TEXT,
+            lat REAL, lng REAL, updated_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("INSERT INTO stops VALUES ('place-davis','Davis','Red','Alewife','Braintree',42.39,-71.12,datetime('now'))")
+    conn.commit()
+    conn.close()
+
+    params = json.dumps({"query": "Davis", "agency_id": "custom"})
+    with patch("sys.stdin") as mock_stdin:
+        mock_stdin.read.return_value = params
+        with patch.object(search_mod, "_find_db_path", return_value=custom_db) as mock_find:
+            search_mod.run()
+            mock_find.assert_called_with("custom"), (
+                "run() should pass agency_id from params to _find_db_path"
+            )
 
 
 def test_run_handles_db_error(tmp_path, capsys):
