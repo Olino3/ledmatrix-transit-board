@@ -84,9 +84,8 @@ class StopsDatabase:
     def _init_schema(self) -> None:
         with self._connect() as conn:
             conn.execute(_CREATE_TABLE)
-            conn.execute(_CREATE_INDEX)
-            conn.execute(_CREATE_INDEX_STATION_ID)
             # Migration: add station_id column when upgrading from pre-0.3 schema.
+            # Must run before creating the index that depends on this column.
             # If ALTER TABLE succeeds, the column was missing — old data used numeric
             # stop_ids instead of GTFS IDs, so clear it to force a clean re-bootstrap.
             try:
@@ -95,6 +94,8 @@ class StopsDatabase:
                 logger.info("stops_db: schema migrated (added station_id), stale data cleared")
             except sqlite3.OperationalError:
                 pass  # Column already present — no migration needed
+            conn.execute(_CREATE_INDEX)
+            conn.execute(_CREATE_INDEX_STATION_ID)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
