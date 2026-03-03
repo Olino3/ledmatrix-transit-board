@@ -130,20 +130,24 @@ class TransitRenderer:
         x1, y1 = x0 + bs, y0 + bs
         draw.ellipse([x0, y0, x1, y1], fill=badge_bg)
 
-        # Route letter centered in badge; nudge scales with badge to correct glyph metrics
+        # Route letter centered at the circle's midpoint using PIL's "mm" anchor,
+        # which positions the text by its visual middle rather than bounding-box corner.
         letter = group.route_id[:1]
+        cx = x0 + bs // 2
+        cy = y0 + bs // 2
         try:
-            bbox = draw.textbbox((0, 0), letter, font=self._font_route)
-            lw, lh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        except AttributeError:
-            lw, lh = self._font_route.getsize(letter)
-        lx = x0 + (bs - lw) // 2
-        ly = y0 + (bs - lh) // 2
-        draw.text((lx, ly), letter, font=self._font_route, fill=badge_fg)
+            draw.text((cx, cy), letter, font=self._font_route, anchor="mm", fill=badge_fg)
+        except TypeError:
+            # Pillow < 8.0: fall back to manual bbox centering
+            try:
+                bbox = draw.textbbox((0, 0), letter, font=self._font_route)
+                lw, lh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            except AttributeError:
+                lw, lh = self._font_route.getsize(letter)
+            draw.text((cx - lw // 2, cy - lh // 2), letter, font=self._font_route, fill=badge_fg)
 
-        # --- Direction label (truncated to fit) ---
+        # --- Direction label (truncated to fit, vertically aligned with badge center) ---
         label_x = x1 + max(2, round(3 * scale))
-        label_y = y0 + margin
         label = group.direction_label
         max_label_w = w - label_x - margin
         while label:
@@ -155,7 +159,16 @@ class TransitRenderer:
             if lbl_w <= max_label_w:
                 break
             label = label[:-1]
-        draw.text((label_x, label_y), label, font=self._font_label, fill=_COLOR_WHITE)
+        try:
+            draw.text((label_x, cy), label, font=self._font_label, anchor="lm", fill=_COLOR_WHITE)
+        except TypeError:
+            # Pillow < 8.0: offset by half the text height
+            try:
+                bbox = draw.textbbox((0, 0), label, font=self._font_label)
+                lh = bbox[3] - bbox[1]
+            except AttributeError:
+                _, lh = self._font_label.getsize(label)
+            draw.text((label_x, cy - lh // 2), label, font=self._font_label, fill=_COLOR_WHITE)
 
         # --- Arrival times ---
         time_gap = max(3, round(5 * scale))
