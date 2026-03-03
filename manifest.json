@@ -1,7 +1,7 @@
 {
   "id": "transit-board",
   "name": "Transit Board",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "author": "Your Name",
   "description": "Displays real-time transit arrivals for a configured station using GTFS Realtime feeds. Compatible with NYC MTA, DC Metro, BART, Chicago L, and any GTFS-RT agency.",
   "entry_point": "manager.py",
