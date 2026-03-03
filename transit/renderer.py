@@ -137,8 +137,8 @@ class TransitRenderer:
             lw, lh = bbox[2] - bbox[0], bbox[3] - bbox[1]
         except AttributeError:
             lw, lh = self._font_route.getsize(letter)
-        lx = x0 + (bs - lw) // 2 - round(scale)
-        ly = y0 + (bs - lh) // 2 + round(scale)
+        lx = x0 + (bs - lw) // 2
+        ly = y0 + (bs - lh) // 2
         draw.text((lx, ly), letter, font=self._font_route, fill=badge_fg)
 
         # --- Direction label (truncated to fit) ---
