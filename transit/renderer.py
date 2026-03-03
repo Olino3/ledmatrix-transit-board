@@ -160,7 +160,7 @@ class TransitRenderer:
                 self._font_route, letter, pad=max(20, bs * 2)
             )
         dx, dy = self._route_ink_cache[letter]
-        draw.text((cx + dx + 1, cy + dy + 1), letter, font=self._font_route, fill=badge_fg)
+        draw.text((cx + dx + 2, cy + dy + 1), letter, font=self._font_route, fill=badge_fg)
 
         # --- Direction label (truncated to fit, ink-aligned at same cy as letter) ---
         label_x = x1 + max(2, round(3 * scale))
