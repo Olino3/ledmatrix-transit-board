@@ -130,23 +130,44 @@ class TransitRenderer:
         x1, y1 = x0 + bs, y0 + bs
         draw.ellipse([x0, y0, x1, y1], fill=badge_bg)
 
-        # Route letter centered at the circle's midpoint using PIL's "mm" anchor,
-        # which positions the text by its visual middle rather than bounding-box corner.
+        # Route letter and direction label share the same cy (circle midpoint).
+        # Use font.getbbox() for tight ink bounds so visual centering is based
+        # on actual rendered pixels, not font-metric whitespace.
         letter = group.route_id[:1]
         cx = x0 + bs // 2
         cy = y0 + bs // 2
-        try:
-            draw.text((cx, cy), letter, font=self._font_route, anchor="mm", fill=badge_fg)
-        except TypeError:
-            # Pillow < 8.0: fall back to manual bbox centering
-            try:
-                bbox = draw.textbbox((0, 0), letter, font=self._font_route)
-                lw, lh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            except AttributeError:
-                lw, lh = self._font_route.getsize(letter)
-            draw.text((cx - lw // 2, cy - lh // 2), letter, font=self._font_route, fill=badge_fg)
 
-        # --- Direction label (truncated to fit, vertically aligned with badge center) ---
+        def _ink_center_y(font, text):
+            """Return the draw y so the ink of `text` is vertically centered at cy."""
+            try:
+                l, t, r, b = font.getbbox(text)
+                return cy - (b - t) // 2 - t
+            except AttributeError:
+                try:
+                    bb = draw.textbbox((0, 0), text, font=font)
+                    return cy - (bb[3] - bb[1]) // 2
+                except AttributeError:
+                    _, h = font.getsize(text)
+                    return cy - h // 2
+
+        def _ink_center_x(font, text):
+            """Return the draw x so the ink of `text` is horizontally centered at cx."""
+            try:
+                l, t, r, b = font.getbbox(text)
+                return cx - (r - l) // 2 - l
+            except AttributeError:
+                try:
+                    bb = draw.textbbox((0, 0), text, font=font)
+                    return cx - (bb[2] - bb[0]) // 2
+                except AttributeError:
+                    w_, _ = font.getsize(text)
+                    return cx - w_ // 2
+
+        lx = _ink_center_x(self._font_route, letter)
+        ly = _ink_center_y(self._font_route, letter)
+        draw.text((lx, ly), letter, font=self._font_route, fill=badge_fg)
+
+        # --- Direction label (truncated to fit, ink-centered at same cy as letter) ---
         label_x = x1 + max(2, round(3 * scale))
         label = group.direction_label
         max_label_w = w - label_x - margin
@@ -159,16 +180,7 @@ class TransitRenderer:
             if lbl_w <= max_label_w:
                 break
             label = label[:-1]
-        try:
-            draw.text((label_x, cy), label, font=self._font_label, anchor="lm", fill=_COLOR_WHITE)
-        except TypeError:
-            # Pillow < 8.0: offset by half the text height
-            try:
-                bbox = draw.textbbox((0, 0), label, font=self._font_label)
-                lh = bbox[3] - bbox[1]
-            except AttributeError:
-                _, lh = self._font_label.getsize(label)
-            draw.text((label_x, cy - lh // 2), label, font=self._font_label, fill=_COLOR_WHITE)
+        draw.text((label_x, _ink_center_y(self._font_label, label or "M")), label, font=self._font_label, fill=_COLOR_WHITE)
 
         # --- Arrival times ---
         time_gap = max(3, round(5 * scale))
