@@ -96,6 +96,26 @@ class TransitRenderer:
         self._font_route = _load_font(_FONT_NORMAL, route_size)
         self._font_label = _load_font(text_font, text_size)
         self._font_time = _load_font(text_font, text_size)
+        # Cache ink offsets: per-letter for the route font; "M" reference for labels
+        self._route_ink_cache: dict = {}
+        pad = max(20, bs * 2)
+        _, self._label_ink_dy = self._ink_offset(self._font_label, "M", pad)
+
+    @staticmethod
+    def _ink_offset(font, text: str, pad: int = 20) -> Tuple[int, int]:
+        """
+        Return (dx, dy) such that drawing at (target_x + dx, target_y + dy)
+        centres the actual rendered ink of *text* at (target_x, target_y).
+
+        Renders to a scratch bitmap so the result is based on real pixel
+        positions, not font-metric whitespace (ascenders / descenders).
+        """
+        tmp = Image.new("L", (pad * 2, pad * 2), 0)
+        ImageDraw.Draw(tmp).text((pad, pad), text, font=font, fill=255)
+        ink = tmp.getbbox()
+        if ink:
+            return (pad - (ink[0] + ink[2]) // 2, pad - (ink[1] + ink[3]) // 2)
+        return (0, 0)
 
     def draw_direction_group(
         self,
@@ -130,44 +150,19 @@ class TransitRenderer:
         x1, y1 = x0 + bs, y0 + bs
         draw.ellipse([x0, y0, x1, y1], fill=badge_bg)
 
-        # Route letter and direction label share the same cy (circle midpoint).
-        # Use font.getbbox() for tight ink bounds so visual centering is based
-        # on actual rendered pixels, not font-metric whitespace.
+        # Route letter centered at circle midpoint using actual ink pixel bounds.
+        # Offsets are cached per letter so the scratch-render happens only once.
         letter = group.route_id[:1]
         cx = x0 + bs // 2
         cy = y0 + bs // 2
+        if letter not in self._route_ink_cache:
+            self._route_ink_cache[letter] = self._ink_offset(
+                self._font_route, letter, pad=max(20, bs * 2)
+            )
+        dx, dy = self._route_ink_cache[letter]
+        draw.text((cx + dx, cy + dy), letter, font=self._font_route, fill=badge_fg)
 
-        def _ink_center_y(font, text):
-            """Return the draw y so the ink of `text` is vertically centered at cy."""
-            try:
-                l, t, r, b = font.getbbox(text)
-                return cy - (b - t) // 2 - t
-            except AttributeError:
-                try:
-                    bb = draw.textbbox((0, 0), text, font=font)
-                    return cy - (bb[3] - bb[1]) // 2
-                except AttributeError:
-                    _, h = font.getsize(text)
-                    return cy - h // 2
-
-        def _ink_center_x(font, text):
-            """Return the draw x so the ink of `text` is horizontally centered at cx."""
-            try:
-                l, t, r, b = font.getbbox(text)
-                return cx - (r - l) // 2 - l
-            except AttributeError:
-                try:
-                    bb = draw.textbbox((0, 0), text, font=font)
-                    return cx - (bb[2] - bb[0]) // 2
-                except AttributeError:
-                    w_, _ = font.getsize(text)
-                    return cx - w_ // 2
-
-        lx = _ink_center_x(self._font_route, letter)
-        ly = _ink_center_y(self._font_route, letter)
-        draw.text((lx, ly), letter, font=self._font_route, fill=badge_fg)
-
-        # --- Direction label (truncated to fit, ink-centered at same cy as letter) ---
+        # --- Direction label (truncated to fit, ink-aligned at same cy as letter) ---
         label_x = x1 + max(2, round(3 * scale))
         label = group.direction_label
         max_label_w = w - label_x - margin
@@ -180,7 +175,7 @@ class TransitRenderer:
             if lbl_w <= max_label_w:
                 break
             label = label[:-1]
-        draw.text((label_x, _ink_center_y(self._font_label, label or "M")), label, font=self._font_label, fill=_COLOR_WHITE)
+        draw.text((label_x, cy + self._label_ink_dy), label, font=self._font_label, fill=_COLOR_WHITE)
 
         # --- Arrival times ---
         time_gap = max(3, round(5 * scale))
