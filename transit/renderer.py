@@ -86,17 +86,16 @@ class TransitRenderer:
 
     def _preload_fonts(self) -> None:
         h = self._dm.height
-        if h >= 32:
-            self._font_route = _load_font(_FONT_NORMAL, 8)
-            self._font_label = _load_font(_FONT_SMALL, 6)
-            self._font_time = _load_font(_FONT_SMALL, 6)
-            self._badge_size = 10
-        else:
-            # Small display (16px tall) — use minimal fonts
-            self._font_route = _load_font(_FONT_SMALL, 6)
-            self._font_label = _load_font(_FONT_SMALL, 6)
-            self._font_time = _load_font(_FONT_SMALL, 6)
-            self._badge_size = 7
+        # Badge ~30% of display height, proportional across all sizes (7–48px)
+        self._badge_size = max(7, min(48, round(h * 0.30)))
+        bs = self._badge_size
+        route_size = max(6, bs - 2)       # letter fills most of badge
+        text_size = max(6, bs // 2)       # label and time text ~half badge height
+        # Switch to the scalable font once text is large enough to benefit
+        text_font = _FONT_NORMAL if text_size >= 8 else _FONT_SMALL
+        self._font_route = _load_font(_FONT_NORMAL, route_size)
+        self._font_label = _load_font(text_font, text_size)
+        self._font_time = _load_font(text_font, text_size)
 
     def draw_direction_group(
         self,
@@ -118,32 +117,35 @@ class TransitRenderer:
         draw = ImageDraw.Draw(image)
         w, h = image.size
 
-        badge_size = self._badge_size
+        bs = self._badge_size
+        # Scale factor relative to the baseline 10px badge (32px display)
+        scale = bs / 10.0
+        margin = max(1, round(scale))
+
         badge_bg = _hex_to_rgb(group.color)
         badge_fg = _contrasting_color(group.color)
 
         # --- Route badge (filled circle) ---
-        x0, y0 = 1, 1
-        x1, y1 = x0 + badge_size, y0 + badge_size
+        x0, y0 = margin, margin
+        x1, y1 = x0 + bs, y0 + bs
         draw.ellipse([x0, y0, x1, y1], fill=badge_bg)
 
-        # Route letter centered in badge
+        # Route letter centered in badge; nudge scales with badge to correct glyph metrics
         letter = group.route_id[:1]
         try:
             bbox = draw.textbbox((0, 0), letter, font=self._font_route)
             lw, lh = bbox[2] - bbox[0], bbox[3] - bbox[1]
         except AttributeError:
             lw, lh = self._font_route.getsize(letter)
-        lx = x0 + (badge_size - lw) // 2
-        ly = y0 + (badge_size - lh) // 2
+        lx = x0 + (bs - lw) // 2 - round(scale)
+        ly = y0 + (bs - lh) // 2 + round(scale)
         draw.text((lx, ly), letter, font=self._font_route, fill=badge_fg)
 
         # --- Direction label (truncated to fit) ---
-        label_x = x1 + 3
-        label_y = y0 + 1
+        label_x = x1 + max(2, round(3 * scale))
+        label_y = y0 + margin
         label = group.direction_label
-        max_label_w = w - label_x - 2
-        # Truncate with ellipsis if needed
+        max_label_w = w - label_x - margin
         while label:
             try:
                 bbox = draw.textbbox((0, 0), label, font=self._font_label)
@@ -156,7 +158,7 @@ class TransitRenderer:
         draw.text((label_x, label_y), label, font=self._font_label, fill=_COLOR_WHITE)
 
         # --- Arrival times ---
-        gap = 5
+        time_gap = max(3, round(5 * scale))
         sorted_arrivals = sorted(group.arrivals)[:3]
         time_texts = [f"{mins}m" for mins in sorted_arrivals]
 
@@ -173,14 +175,14 @@ class TransitRenderer:
                 time_widths.append(tw)
                 font_bottom = th
 
-        total_w = sum(time_widths) + gap * max(0, len(time_widths) - 1)
+        total_w = sum(time_widths) + time_gap * max(0, len(time_widths) - 1)
         time_x = (w - total_w) // 2
-        time_y = h - font_bottom - 1  # anchor to bottom, always fits
+        time_y = h - font_bottom - margin  # margin scales with display size
 
         for mins, text, tw in zip(sorted_arrivals, time_texts, time_widths):
             color = _COLOR_IMMINENT if mins < imminent_threshold else _COLOR_NORMAL
             draw.text((time_x, time_y), text, font=self._font_time, fill=color)
-            time_x += tw + gap
+            time_x += tw + time_gap
 
     def draw_no_data(self, image: Image.Image) -> None:
         """Render a 'No arrivals' placeholder screen."""
