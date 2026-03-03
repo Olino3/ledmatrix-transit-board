@@ -122,10 +122,10 @@ class TransitRenderer:
         badge_bg = _hex_to_rgb(group.color)
         badge_fg = _contrasting_color(group.color)
 
-        # --- Route badge (filled rectangle) ---
+        # --- Route badge (filled circle) ---
         x0, y0 = 1, 1
         x1, y1 = x0 + badge_size, y0 + badge_size
-        draw.rectangle([x0, y0, x1, y1], fill=badge_bg)
+        draw.ellipse([x0, y0, x1, y1], fill=badge_bg)
 
         # Route letter centered in badge
         letter = group.route_id[:1]
@@ -156,19 +156,31 @@ class TransitRenderer:
         draw.text((label_x, label_y), label, font=self._font_label, fill=_COLOR_WHITE)
 
         # --- Arrival times ---
-        time_y = y1 + 3
-        sorted_arrivals = sorted(group.arrivals)
-        time_x = 2
-        for mins in sorted_arrivals[:3]:
-            color = _COLOR_IMMINENT if mins < imminent_threshold else _COLOR_NORMAL
-            text = f"{mins}m"
-            draw.text((time_x, time_y), text, font=self._font_time, fill=color)
+        gap = 5
+        sorted_arrivals = sorted(group.arrivals)[:3]
+        time_texts = [f"{mins}m" for mins in sorted_arrivals]
+
+        # Measure all labels to center them and anchor vertically
+        time_widths = []
+        font_bottom = 6  # fallback
+        for text in time_texts:
             try:
                 bbox = draw.textbbox((0, 0), text, font=self._font_time)
-                tw = bbox[2] - bbox[0]
+                time_widths.append(bbox[2] - bbox[0])
+                font_bottom = bbox[3]
             except AttributeError:
-                tw, _ = self._font_time.getsize(text)
-            time_x += tw + 5
+                tw, th = self._font_time.getsize(text)
+                time_widths.append(tw)
+                font_bottom = th
+
+        total_w = sum(time_widths) + gap * max(0, len(time_widths) - 1)
+        time_x = (w - total_w) // 2
+        time_y = h - font_bottom - 1  # anchor to bottom, always fits
+
+        for mins, text, tw in zip(sorted_arrivals, time_texts, time_widths):
+            color = _COLOR_IMMINENT if mins < imminent_threshold else _COLOR_NORMAL
+            draw.text((time_x, time_y), text, font=self._font_time, fill=color)
+            time_x += tw + gap
 
     def draw_no_data(self, image: Image.Image) -> None:
         """Render a 'No arrivals' placeholder screen."""
