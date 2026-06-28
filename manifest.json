@@ -1,7 +1,7 @@
 {
   "id": "transit-board",
   "name": "Transit Board",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "author": "Olin Osborne III",
   "description": "Displays real-time transit arrivals for a configured station using GTFS Realtime feeds. Ships with NYC MTA support; works with any GTFS-RT agency via the custom adapter.",
   "entry_point": "manager.py",

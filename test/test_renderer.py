@@ -76,6 +76,10 @@ def _is_direction_label(pixel):
     return r > 150 and g > 150 and b > 150
 
 
+def _image_differs(left, right):
+    return list(left.getdata()) != list(right.getdata())
+
+
 class TestRouteBadge:
     def test_route_badge_background_matches_official_color(self, mock_display_manager):
         """The badge area contains pixels matching the route's official hex color."""
@@ -115,17 +119,22 @@ class TestRouteBadge:
 
 
 class TestDirectionLabel:
-    def test_direction_label_truncated_to_display_width(self, mock_display_manager):
-        """Very long direction label doesn't spill outside the image width."""
+    def test_direction_label_fits_full_display_width_without_truncation(self, mock_display_manager):
+        """Long direction labels fit the top row instead of being truncated."""
         from transit.renderer import TransitRenderer
 
         renderer = TransitRenderer(mock_display_manager)
-        group = _make_group(direction_label="A Very Very Very Long Direction Label That Overflows")
+        group = _make_group(direction_label="Downtown/Brooklyn")
         image = Image.new("RGB", (128, 32), (0, 0, 0))
 
-        # Should not raise and image stays 128 wide
         renderer.draw_direction_group(group, image)
+
         assert image.width == 128
+        label_bbox = _bbox_for_pixels_in_region(image, _is_direction_label, 0, 16)
+        assert label_bbox is not None, "Expected visible full direction label"
+        assert label_bbox[0] >= 16
+        assert label_bbox[2] <= 128
+        assert _bbox_width(label_bbox) >= 90
 
 
 class TestArrivalTimes:
@@ -142,6 +151,28 @@ class TestArrivalTimes:
         # Image must have some non-black pixels (something was drawn)
         pixels = list(image.getdata())
         assert any(p != (0, 0, 0) for p in pixels), "Renderer drew nothing"
+
+    def test_all_configured_arrivals_are_visible(self):
+        """The renderer shows every arrival supplied in the group, not just the first."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 32))
+        group_one = _make_group(arrivals=[5])
+        group_three = _make_group(arrivals=[5, 12, 18])
+
+        image_one = Image.new("RGB", (128, 32), (0, 0, 0))
+        image_three = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group_one, image_one)
+        renderer.draw_direction_group(group_three, image_three)
+
+        one_bbox = _bbox_for_pixels(image_one, _is_arrival_green)
+        three_bbox = _bbox_for_pixels(image_three, _is_arrival_green)
+
+        assert one_bbox is not None, "Expected one-arrival rendering"
+        assert three_bbox is not None, "Expected three-arrival rendering"
+        assert _bbox_width(three_bbox) > _bbox_width(one_bbox) * 2
+        assert _image_differs(image_one, image_three)
 
     def test_no_arrivals_renders_placeholder_text(self, mock_display_manager):
         """Group with empty arrivals list renders a placeholder (not blank)."""
@@ -220,10 +251,10 @@ class TestAdaptiveDisplay:
 
         label_bbox = _bbox_for_pixels_in_region(image, _is_direction_label, 0, 16)
         assert label_bbox is not None, "Expected large direction label pixels"
-        assert _bbox_height(label_bbox) >= 10
+        assert _bbox_height(label_bbox) >= 8
 
-    def test_128x32_primary_arrival_is_centered_and_fills_bottom_half(self):
-        """The next arrival should be the large centered readout in the bottom half."""
+    def test_128x32_arrivals_are_centered_and_fit_bottom_half(self):
+        """Configured arrivals should be centered as a group in the bottom half."""
         from transit.renderer import TransitRenderer
 
         renderer = TransitRenderer(_make_display_manager(128, 32))
@@ -233,9 +264,10 @@ class TestAdaptiveDisplay:
         renderer.draw_direction_group(group, image)
 
         time_bbox = _bbox_for_pixels(image, _is_arrival_green)
-        assert time_bbox is not None, "Expected primary arrival pixels"
+        assert time_bbox is not None, "Expected arrival pixels"
         assert time_bbox[1] >= 16
-        assert _bbox_height(time_bbox) >= 14
+        assert _bbox_height(time_bbox) >= 8
+        assert time_bbox[2] <= 128
         assert abs(((time_bbox[0] + time_bbox[2]) / 2) - 64) <= 3
 
     def test_128x64_layout_grows_without_clipping(self):
@@ -259,9 +291,9 @@ class TestAdaptiveDisplay:
         assert time_bbox[3] <= 64
 
 
-class TestPrimaryArrival:
-    def test_renderer_keeps_primary_arrival_large_when_more_arrivals_are_available(self, mock_display_manager):
-        """Extra arrivals should not shrink the main next-arrival readout."""
+class TestConfiguredArrivals:
+    def test_renderer_keeps_all_configured_arrivals_visible(self, mock_display_manager):
+        """Extra configured arrivals are rendered instead of being dropped."""
         from transit.renderer import TransitRenderer
 
         renderer = TransitRenderer(mock_display_manager)
@@ -275,12 +307,15 @@ class TestPrimaryArrival:
         renderer.draw_direction_group(group_one, image_one)
         renderer.draw_direction_group(group_five, image_five)
 
-        one_bbox = _bbox_for_pixels(image_one, lambda p: p[0] > 120 and p[1] > 120 and p[2] < 80)
-        five_bbox = _bbox_for_pixels(image_five, lambda p: p[0] > 120 and p[1] > 120 and p[2] < 80)
+        imminent = lambda p: p[0] > 120 and p[1] > 120 and p[2] < 80
+        one_bbox = _bbox_for_pixels_in_region(image_one, imminent, 16, 32)
+        five_imminent_bbox = _bbox_for_pixels_in_region(image_five, imminent, 16, 32)
+        five_normal_bbox = _bbox_for_pixels_in_region(image_five, _is_arrival_green, 16, 32)
 
         assert one_bbox is not None, "Expected imminent primary arrival pixels"
-        assert five_bbox is not None, "Expected imminent primary arrival pixels"
-        assert one_bbox == five_bbox
+        assert five_imminent_bbox is not None, "Expected imminent first arrival pixels"
+        assert five_normal_bbox is not None, "Expected later normal arrival pixels"
+        assert _image_differs(image_one, image_five)
 
 
 class TestImminentHighlight:

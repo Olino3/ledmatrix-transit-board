@@ -37,6 +37,7 @@ def _find_font_dir() -> Path:
 _FONT_DIR = _find_font_dir()
 _FONT_NORMAL = _FONT_DIR / "PressStart2P-Regular.ttf"
 _FONT_SMALL = _FONT_DIR / "4x6-font.ttf"
+_FONT_PIXEL = _FONT_DIR / "5by7.regular.ttf"
 
 # Color constants
 _COLOR_IMMINENT = (255, 255, 0)    # yellow — train arriving < threshold mins
@@ -88,12 +89,17 @@ class _TextRun:
 class _Layout:
     margin: int
     top_h: int
+    divider_y: int
+    bottom_y: int
     badge_size: int
     badge_xy: Tuple[int, int]
     label_x: int
     label_cy: int
+    label_max_w: int
+    label_max_h: int
     time_y: int
     time_gap: int
+    time_max_w: int
     route_font: ImageFont.ImageFont
     label_font: ImageFont.ImageFont
     time_font: ImageFont.ImageFont
@@ -137,8 +143,31 @@ class TransitRenderer:
         return x, y
 
     def _text_font_for_size(self, size: int) -> ImageFont.ImageFont:
-        path = _FONT_NORMAL if size >= 8 else _FONT_SMALL
+        path = _FONT_PIXEL if size >= 8 else _FONT_SMALL
         return self._font(path, size)
+
+    def _text_image(self, font: ImageFont.ImageFont, text: str, fill: Tuple[int, int, int]) -> Image.Image:
+        tmp = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(tmp)
+        run = self._measure(draw, font, text)
+        image = Image.new("RGBA", (max(1, run.width), max(1, run.height)), (0, 0, 0, 0))
+        ImageDraw.Draw(image).text((-run.bbox[0], -run.bbox[1]), text, font=font, fill=(*fill, 255))
+        return image
+
+    def _paste_fitted_text(
+        self,
+        image: Image.Image,
+        font: ImageFont.ImageFont,
+        text: str,
+        xy: Tuple[int, int],
+        fill: Tuple[int, int, int],
+        max_width: int,
+    ) -> Tuple[int, int]:
+        text_image = self._text_image(font, text, fill)
+        if text_image.width > max_width:
+            text_image = text_image.resize((max(1, max_width), text_image.height), Image.Resampling.NEAREST)
+        image.paste(text_image, xy, text_image)
+        return text_image.size
 
     def _fit_label_font(
         self,
@@ -148,7 +177,7 @@ class TransitRenderer:
         max_height: int,
     ) -> ImageFont.ImageFont:
         min_size = 6
-        max_size = max(min_size, min(48, max_height + 4))
+        max_size = max(min_size, min(48, round(max_height * 0.85)))
         for size in range(max_size, min_size - 1, -1):
             font = self._text_font_for_size(size)
             first = self._measure(draw, font, label[:1] or "M")
@@ -164,19 +193,22 @@ class TransitRenderer:
         max_height: int,
     ) -> Tuple[ImageFont.ImageFont, int]:
         min_size = 6
-        max_size = max(min_size, min(64, max_height + 6))
+        max_size = max(min_size, min(64, round(max_height * 0.75)))
         if not time_texts:
             return self._text_font_for_size(min_size), 0
 
         for size in range(max_size, min_size - 1, -1):
             font = self._text_font_for_size(size)
             runs = [self._measure(draw, font, text) for text in time_texts]
-            gap = max(2, round(size * 0.15))
-            total_w = sum(run.width for run in runs) + gap * max(0, len(runs) - 1)
             max_h = max(run.height for run in runs)
-            if total_w <= max_width and max_h <= max_height:
-                return font, gap
-        return self._text_font_for_size(min_size), 2
+            if max_h > max_height:
+                continue
+            natural_gap = max(2, round(size * 0.45))
+            for gap in range(natural_gap, 0, -1):
+                total_w = sum(run.width for run in runs) + gap * max(0, len(runs) - 1)
+                if total_w <= max_width:
+                    return font, gap
+        return self._text_font_for_size(min_size), 1
 
     def _compute_layout(
         self,
@@ -186,11 +218,13 @@ class TransitRenderer:
         label: str,
         time_texts: list,
     ) -> _Layout:
-        top_h = max(8, height // 2)
-        bottom_h = max(0, height - top_h)
-        margin = max(1, round(min(width, height) * 0.04))
+        divider_y = max(6, (height // 2) - 1)
+        top_h = divider_y
+        bottom_y = min(height, divider_y + 1)
+        bottom_h = max(0, height - bottom_y)
+        margin = max(1, round(min(width, height) * 0.03))
 
-        badge_size = max(7, min(48, top_h - (2 * margin)))
+        badge_size = max(6, min(48, top_h - margin))
         badge_size = min(badge_size, max(1, width // 3))
         badge_x = margin
         badge_y = max(0, (top_h - badge_size) // 2)
@@ -201,24 +235,28 @@ class TransitRenderer:
         label_max_h = max(1, top_h - (2 * margin))
         label_font = self._fit_label_font(draw, label, label_max_w, label_max_h)
 
-        primary_time_texts = time_texts[:1]
         time_max_w = max(1, width - (2 * margin))
         time_max_h = max(1, bottom_h)
-        time_font, time_gap = self._fit_time_font(draw, primary_time_texts, time_max_w, time_max_h)
-        time_runs = [self._measure(draw, time_font, text) for text in primary_time_texts]
+        time_font, time_gap = self._fit_time_font(draw, time_texts, time_max_w, time_max_h)
+        time_runs = [self._measure(draw, time_font, text) for text in time_texts]
         tallest_time = max((run.height for run in time_runs), default=0)
-        time_y = top_h + max(0, (bottom_h - tallest_time) // 2)
+        time_y = bottom_y + max(0, (bottom_h - tallest_time) // 2)
 
         return _Layout(
             margin=margin,
             top_h=top_h,
+            divider_y=divider_y,
+            bottom_y=bottom_y,
             badge_size=badge_size,
             badge_xy=(badge_x, badge_y),
             label_x=label_x,
             label_cy=badge_y + badge_size // 2,
+            label_max_w=label_max_w,
+            label_max_h=label_max_h,
             time_y=time_y,
             time_gap=time_gap,
-            route_font=self._font(_FONT_NORMAL, max(6, badge_size - 2)),
+            time_max_w=time_max_w,
+            route_font=self._font(_FONT_PIXEL, max(6, round(badge_size * 0.75))),
             label_font=label_font,
             time_font=time_font,
         )
@@ -246,10 +284,11 @@ class TransitRenderer:
         badge_bg = _hex_to_rgb(group.color)
         badge_fg = _contrasting_color(group.color)
         sorted_arrivals = sorted(group.arrivals)
-        primary_arrivals = sorted_arrivals[:1]
-        time_texts = [f"{mins}m" for mins in primary_arrivals]
+        time_texts = [f"{mins}m" for mins in sorted_arrivals]
         layout = self._compute_layout(draw, w, h, group.direction_label, time_texts)
         bs = layout.badge_size
+
+        draw.line((0, layout.divider_y, w, layout.divider_y), fill=(50, 80, 110))
 
         # --- Route badge (filled circle) ---
         x0, y0 = layout.badge_xy
@@ -268,37 +307,63 @@ class TransitRenderer:
             fill=badge_fg,
         )
 
-        # --- Direction label (truncated to fit, ink-aligned at same cy as letter) ---
+        # --- Direction label (fit full text; compress only if physically necessary) ---
         label = group.direction_label
-        max_label_w = w - layout.label_x - layout.margin
-        while label:
-            label_run = self._measure(draw, layout.label_font, label)
-            if label_run.width <= max_label_w:
-                break
-            label = label[:-1]
         if label:
             label_run = self._measure(draw, layout.label_font, label)
-            draw.text(
-                self._text_pos_for_left_center(label_run, layout.label_x, layout.label_cy),
+            label_x, label_y = self._text_pos_for_left_center(label_run, layout.label_x, layout.label_cy)
+            self._paste_fitted_text(
+                image,
+                layout.label_font,
                 label,
-                font=layout.label_font,
-                fill=_COLOR_WHITE,
+                (label_x, label_y),
+                (210, 232, 255),
+                layout.label_max_w,
             )
 
         # --- Arrival times ---
         time_runs = [self._measure(draw, layout.time_font, text) for text in time_texts]
         total_w = sum(run.width for run in time_runs) + layout.time_gap * max(0, len(time_runs) - 1)
-        time_x = (w - total_w) // 2
+        row_scale_w = min(total_w, layout.time_max_w)
+        row = Image.new("RGBA", (max(1, total_w), max(1, max((r.height for r in time_runs), default=1))), (0, 0, 0, 0))
+        row_draw = ImageDraw.Draw(row)
+        row_x = 0
 
-        for mins, run in zip(primary_arrivals, time_runs):
+        for mins, run in zip(sorted_arrivals, time_runs):
             color = _COLOR_IMMINENT if mins < imminent_threshold else _COLOR_NORMAL
-            draw.text(
-                (time_x, layout.time_y - run.bbox[1]),
+            row_draw.text(
+                (row_x - run.bbox[0], -run.bbox[1]),
                 run.text,
                 font=layout.time_font,
-                fill=color,
+                fill=(*color, 255),
             )
-            time_x += run.width + layout.time_gap
+            row_x += run.width + layout.time_gap
+        if row.width > row_scale_w:
+            row = row.resize((max(1, row_scale_w), row.height), Image.Resampling.NEAREST)
+        time_x = (w - row.width) // 2
+        image.paste(row, (time_x, layout.time_y), row)
+
+    def draw_slide_transition(
+        self,
+        old_group: DirectionGroup,
+        new_group: DirectionGroup,
+        image: Image.Image,
+        progress: float,
+        imminent_threshold: int = _IMMINENT_THRESHOLD_DEFAULT,
+    ) -> None:
+        """Draw one slide-down transition frame between two direction groups."""
+        w, h = image.size
+        old_image = Image.new("RGB", (w, h), _COLOR_BLACK)
+        new_image = Image.new("RGB", (w, h), _COLOR_BLACK)
+        self.draw_direction_group(old_group, old_image, imminent_threshold=imminent_threshold)
+        self.draw_direction_group(new_group, new_image, imminent_threshold=imminent_threshold)
+
+        offset = max(0, min(h, round(h * progress)))
+        image.paste(_COLOR_BLACK, (0, 0, w, h))
+        if offset < h:
+            image.paste(old_image.crop((0, 0, w, h - offset)), (0, offset))
+        if offset > 0:
+            image.paste(new_image.crop((0, h - offset, w, h)), (0, 0))
 
     def draw_no_data(self, image: Image.Image) -> None:
         """Render a 'No arrivals' placeholder screen."""
