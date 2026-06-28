@@ -91,9 +91,13 @@ class TransitBoardPlugin(BasePlugin):
         if not self._groups:
             self._renderer.draw_no_data(image)
         else:
-            self._maybe_advance_index()
+            old_idx = self._current_idx % len(self._groups)
+            advanced = self._maybe_advance_index()
             group = self._groups[self._current_idx % len(self._groups)]
             threshold = self.config.get("live_threshold_mins", 2)
+            if advanced and len(self._groups) > 1:
+                old_group = self._groups[old_idx]
+                self._draw_slide_transition(old_group, group, threshold)
             self._renderer.draw_direction_group(group, image, imminent_threshold=threshold)
 
         self.display_manager.image.paste(image)
@@ -237,13 +241,38 @@ class TransitBoardPlugin(BasePlugin):
         groups.sort(key=lambda g: g.arrivals[0] if g.arrivals else 999)
         return groups
 
-    def _maybe_advance_index(self) -> None:
+    def _maybe_advance_index(self) -> bool:
         dwell = self.config.get("per_direction_secs", 4)
         now = time.monotonic()
         if now - self._last_display_time >= dwell:
             if self._groups:
                 self._current_idx = (self._current_idx + 1) % len(self._groups)
             self._last_display_time = now
+            return True
+        return False
+
+    def _draw_slide_transition(
+        self,
+        old_group: DirectionGroup,
+        new_group: DirectionGroup,
+        threshold: int,
+    ) -> None:
+        """Animate old content sliding down while the next direction drops in."""
+        for progress in (0.25, 0.5, 0.75):
+            frame = Image.new(
+                "RGB",
+                (self.display_manager.width, self.display_manager.height),
+                (0, 0, 0),
+            )
+            self._renderer.draw_slide_transition(
+                old_group,
+                new_group,
+                frame,
+                progress,
+                imminent_threshold=threshold,
+            )
+            self.display_manager.image.paste(frame)
+            self.display_manager.update_display()
 
     def _db_path(self) -> str:
         cache_dir = self.cache_manager.get_cache_dir()

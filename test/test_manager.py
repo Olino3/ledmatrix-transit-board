@@ -149,6 +149,30 @@ class TestDisplayCycling:
 
         assert plugin._current_idx == 1
 
+    def test_display_uses_slide_transition_when_direction_advances(self, mock_deps):
+        """Changing direction animates old and new groups with slide-down frames."""
+        plugin = _make_plugin(deps=mock_deps)
+        plugin._groups = [
+            _make_direction_group("N", "Uptown"),
+            _make_direction_group("N", "Downtown"),
+        ]
+        plugin._current_idx = 0
+        plugin._last_display_time = time.monotonic() - 10
+
+        with (
+            patch.object(plugin._renderer, "draw_direction_group") as mock_draw,
+            patch.object(plugin._renderer, "draw_slide_transition") as mock_transition,
+        ):
+            plugin.display()
+
+        assert plugin._current_idx == 1
+        assert mock_transition.call_count >= 1
+        old_group = mock_transition.call_args_list[0][0][0]
+        new_group = mock_transition.call_args_list[0][0][1]
+        assert old_group.direction_label == "Uptown"
+        assert new_group.direction_label == "Downtown"
+        mock_draw.assert_called_once()
+
     def test_display_index_wraps_after_last_group(self, mock_deps):
         """Index wraps back to 0 after the last direction group."""
         plugin = _make_plugin(deps=mock_deps)

@@ -284,13 +284,18 @@ REGISTRY = {
 ## Display Layout
 
 ```
-Row  0-11:  [BADGE] Direction label (truncated to fit)
-Row 12-22:  Arrival times   "2m  7m  15m"
+Top half:     [BADGE] Direction label
+Divider:      1px MTA-style separator
+Bottom half:  Arrival times   "2m  7m  15m"
 ```
 
-- **Badge**: 10×10 px filled rectangle in the route's official color; route letter centered in contrasting white or black
+- **Adaptive sizing**: the renderer computes badge and font sizes from the actual matrix width and height, so wider or taller boards use the extra pixels instead of keeping the small single-panel layout
+- **Badge**: filled circle in the route's official color; route letter centered in contrasting white or black
+- **Direction label**: always renders the full label; long labels step down to a compact font and only compress horizontally as a last resort
+- **Arrival times**: all configured arrivals render as a centered group in the bottom half; the font steps down to keep every time visible
 - **Arrival colors**: green for normal arrivals; yellow for arrivals within `live_threshold_mins` — the same threshold that controls live priority takeover
-- **16-pixel-tall panels**: smaller badge (7×7 px) and fonts scale down automatically
+- **Transitions**: direction changes slide downward in a short MTA-style motion before settling on the next card
+- **Common panel sizes**: layouts are tested for small 64×16 panels, standard 64×32 panels, two-panel 128×32 boards, and taller 128×64 boards
 
 ---
 
