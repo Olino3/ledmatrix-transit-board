@@ -41,12 +41,39 @@ def _bbox_for_pixels(image, predicate):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
+def _bbox_for_pixels_in_region(image, predicate, y_start, y_end):
+    points = [
+        (x, y)
+        for y in range(y_start, y_end)
+        for x in range(image.width)
+        if predicate(image.getpixel((x, y)))
+    ]
+    if not points:
+        return None
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return min(xs), min(ys), max(xs) + 1, max(ys) + 1
+
+
 def _bbox_height(bbox):
     return bbox[3] - bbox[1]
 
 
+def _bbox_width(bbox):
+    return bbox[2] - bbox[0]
+
+
 def _is_arrival_green(pixel):
     return pixel[1] > 120 and pixel[0] < 80 and pixel[2] < 160
+
+
+def _is_top_content(pixel):
+    return pixel != (0, 0, 0) and not _is_arrival_green(pixel)
+
+
+def _is_direction_label(pixel):
+    r, g, b = pixel
+    return r > 150 and g > 150 and b > 150
 
 
 class TestRouteBadge:
@@ -174,6 +201,43 @@ class TestAdaptiveDisplay:
         assert time_bbox[1] >= 16
         assert _bbox_height(time_bbox) >= 8
 
+    def test_128x32_top_content_spans_board_width_and_half_height(self):
+        """The route badge plus direction should fill the full top half of a two-panel board."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 32))
+        group = _make_group(route_id="N", direction_label="Uptown/Queens", arrivals=[5])
+        image = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group, image)
+
+        top_bbox = _bbox_for_pixels_in_region(image, _is_top_content, 0, 16)
+        assert top_bbox is not None, "Expected route badge and direction pixels"
+        assert top_bbox[1] <= 1
+        assert top_bbox[3] <= 16
+        assert _bbox_height(top_bbox) >= 14
+        assert _bbox_width(top_bbox) >= 120
+
+        label_bbox = _bbox_for_pixels_in_region(image, _is_direction_label, 0, 16)
+        assert label_bbox is not None, "Expected large direction label pixels"
+        assert _bbox_height(label_bbox) >= 10
+
+    def test_128x32_primary_arrival_is_centered_and_fills_bottom_half(self):
+        """The next arrival should be the large centered readout in the bottom half."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 32))
+        group = _make_group(arrivals=[5, 12, 18])
+        image = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group, image)
+
+        time_bbox = _bbox_for_pixels(image, _is_arrival_green)
+        assert time_bbox is not None, "Expected primary arrival pixels"
+        assert time_bbox[1] >= 16
+        assert _bbox_height(time_bbox) >= 14
+        assert abs(((time_bbox[0] + time_bbox[2]) / 2) - 64) <= 3
+
     def test_128x64_layout_grows_without_clipping(self):
         """Taller boards should scale badge and arrival text beyond 32px-board sizes."""
         from transit.renderer import TransitRenderer
@@ -195,26 +259,28 @@ class TestAdaptiveDisplay:
         assert time_bbox[3] <= 64
 
 
-class TestMaxArrivals:
-    def test_renderer_respects_more_than_three_arrivals(self, mock_display_manager):
-        """Group with 5 arrivals renders differently than the same group capped at 3."""
+class TestPrimaryArrival:
+    def test_renderer_keeps_primary_arrival_large_when_more_arrivals_are_available(self, mock_display_manager):
+        """Extra arrivals should not shrink the main next-arrival readout."""
         from transit.renderer import TransitRenderer
 
         renderer = TransitRenderer(mock_display_manager)
 
-        group_three = _make_group(arrivals=[1, 5, 10])
-        group_five  = _make_group(arrivals=[1, 5, 10, 15, 20])
+        group_one = _make_group(arrivals=[1])
+        group_five = _make_group(arrivals=[1, 5, 10, 15, 20])
 
-        image_three = Image.new("RGB", (128, 32), (0, 0, 0))
-        image_five  = Image.new("RGB", (128, 32), (0, 0, 0))
+        image_one = Image.new("RGB", (128, 32), (0, 0, 0))
+        image_five = Image.new("RGB", (128, 32), (0, 0, 0))
 
-        renderer.draw_direction_group(group_three, image_three)
-        renderer.draw_direction_group(group_five,  image_five)
+        renderer.draw_direction_group(group_one, image_one)
+        renderer.draw_direction_group(group_five, image_five)
 
-        assert list(image_three.getdata()) != list(image_five.getdata()), (
-            "Rendering 5 arrivals should produce a different image than rendering 3; "
-            "renderer must not hard-cap at 3"
-        )
+        one_bbox = _bbox_for_pixels(image_one, lambda p: p[0] > 120 and p[1] > 120 and p[2] < 80)
+        five_bbox = _bbox_for_pixels(image_five, lambda p: p[0] > 120 and p[1] > 120 and p[2] < 80)
+
+        assert one_bbox is not None, "Expected imminent primary arrival pixels"
+        assert five_bbox is not None, "Expected imminent primary arrival pixels"
+        assert one_bbox == five_bbox
 
 
 class TestImminentHighlight:

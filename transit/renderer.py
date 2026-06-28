@@ -152,13 +152,6 @@ class TransitRenderer:
         for size in range(max_size, min_size - 1, -1):
             font = self._text_font_for_size(size)
             first = self._measure(draw, font, label[:1] or "M")
-            full = self._measure(draw, font, label or "M")
-            if first.height <= max_height and full.height <= max_height and full.width <= max_width:
-                return font
-
-        for size in range(max_size, min_size - 1, -1):
-            font = self._text_font_for_size(size)
-            first = self._measure(draw, font, label[:1] or "M")
             if first.height <= max_height and first.width <= max_width:
                 return font
         return self._text_font_for_size(min_size)
@@ -208,10 +201,11 @@ class TransitRenderer:
         label_max_h = max(1, top_h - (2 * margin))
         label_font = self._fit_label_font(draw, label, label_max_w, label_max_h)
 
+        primary_time_texts = time_texts[:1]
         time_max_w = max(1, width - (2 * margin))
-        time_max_h = max(1, bottom_h - (2 * margin))
-        time_font, time_gap = self._fit_time_font(draw, time_texts, time_max_w, time_max_h)
-        time_runs = [self._measure(draw, time_font, text) for text in time_texts]
+        time_max_h = max(1, bottom_h)
+        time_font, time_gap = self._fit_time_font(draw, primary_time_texts, time_max_w, time_max_h)
+        time_runs = [self._measure(draw, time_font, text) for text in primary_time_texts]
         tallest_time = max((run.height for run in time_runs), default=0)
         time_y = top_h + max(0, (bottom_h - tallest_time) // 2)
 
@@ -252,7 +246,8 @@ class TransitRenderer:
         badge_bg = _hex_to_rgb(group.color)
         badge_fg = _contrasting_color(group.color)
         sorted_arrivals = sorted(group.arrivals)
-        time_texts = [f"{mins}m" for mins in sorted_arrivals]
+        primary_arrivals = sorted_arrivals[:1]
+        time_texts = [f"{mins}m" for mins in primary_arrivals]
         layout = self._compute_layout(draw, w, h, group.direction_label, time_texts)
         bs = layout.badge_size
 
@@ -295,7 +290,7 @@ class TransitRenderer:
         total_w = sum(run.width for run in time_runs) + layout.time_gap * max(0, len(time_runs) - 1)
         time_x = (w - total_w) // 2
 
-        for mins, run in zip(sorted_arrivals, time_runs):
+        for mins, run in zip(primary_arrivals, time_runs):
             color = _COLOR_IMMINENT if mins < imminent_threshold else _COLOR_NORMAL
             draw.text(
                 (time_x, layout.time_y - run.bbox[1]),
