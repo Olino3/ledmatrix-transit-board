@@ -146,12 +146,20 @@ class TransitRenderer:
         path = _FONT_PIXEL if size >= 8 else _FONT_SMALL
         return self._font(path, size)
 
-    def _text_image(self, font: ImageFont.ImageFont, text: str, fill: Tuple[int, int, int]) -> Image.Image:
+    def _text_image(
+        self,
+        font: ImageFont.ImageFont,
+        text: str,
+        fill: Tuple[int, int, int],
+        weight: int = 0,
+    ) -> Image.Image:
         tmp = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
         draw = ImageDraw.Draw(tmp)
         run = self._measure(draw, font, text)
-        image = Image.new("RGBA", (max(1, run.width), max(1, run.height)), (0, 0, 0, 0))
-        ImageDraw.Draw(image).text((-run.bbox[0], -run.bbox[1]), text, font=font, fill=(*fill, 255))
+        image = Image.new("RGBA", (max(1, run.width + weight), max(1, run.height)), (0, 0, 0, 0))
+        image_draw = ImageDraw.Draw(image)
+        for dx in range(weight + 1):
+            image_draw.text((dx - run.bbox[0], -run.bbox[1]), text, font=font, fill=(*fill, 255))
         return image
 
     def _paste_fitted_text(
@@ -162,8 +170,9 @@ class TransitRenderer:
         xy: Tuple[int, int],
         fill: Tuple[int, int, int],
         max_width: int,
+        weight: int = 0,
     ) -> Tuple[int, int]:
-        text_image = self._text_image(font, text, fill)
+        text_image = self._text_image(font, text, fill, weight=weight)
         if text_image.width > max_width:
             text_image = text_image.resize((max(1, max_width), text_image.height), Image.Resampling.NEAREST)
         image.paste(text_image, xy, text_image)
@@ -231,7 +240,8 @@ class TransitRenderer:
 
         gap = max(2, round(badge_size * 0.22))
         label_x = badge_x + badge_size + gap
-        label_max_w = max(1, width - label_x - margin)
+        label_right_margin = max(4, round(width * 0.035))
+        label_max_w = max(1, width - label_x - label_right_margin)
         label_max_h = max(1, top_h - (2 * margin))
         label_font = self._fit_label_font(draw, label, label_max_w, label_max_h)
 
@@ -319,6 +329,7 @@ class TransitRenderer:
                 (label_x, label_y),
                 (210, 232, 255),
                 layout.label_max_w,
+                weight=1,
             )
 
         # --- Arrival times ---

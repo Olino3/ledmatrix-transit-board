@@ -63,6 +63,15 @@ def _bbox_width(bbox):
     return bbox[2] - bbox[0]
 
 
+def _count_pixels_in_region(image, predicate, y_start, y_end):
+    return sum(
+        1
+        for y in range(y_start, y_end)
+        for x in range(image.width)
+        if predicate(image.getpixel((x, y)))
+    )
+
+
 def _is_arrival_green(pixel):
     return pixel[1] > 120 and pixel[0] < 80 and pixel[2] < 160
 
@@ -135,6 +144,35 @@ class TestDirectionLabel:
         assert label_bbox[0] >= 16
         assert label_bbox[2] <= 128
         assert _bbox_width(label_bbox) >= 90
+
+    def test_direction_label_keeps_right_edge_margin(self):
+        """Direction text leaves breathing room at the right edge."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 32))
+        group = _make_group(direction_label="Downtown/Brooklyn")
+        image = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group, image)
+
+        label_bbox = _bbox_for_pixels_in_region(image, _is_direction_label, 0, 16)
+        assert label_bbox is not None, "Expected visible direction label"
+        assert label_bbox[2] <= 124
+
+    def test_direction_label_is_weighted_for_readability(self):
+        """Direction text uses a thicker rendering pass for distance readability."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 32))
+        group = _make_group(direction_label="Uptown/Queens")
+        image = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group, image)
+
+        label_bbox = _bbox_for_pixels_in_region(image, _is_direction_label, 0, 16)
+        assert label_bbox is not None, "Expected visible direction label"
+        label_pixels = _count_pixels_in_region(image, _is_direction_label, 0, 16)
+        assert label_pixels / _bbox_width(label_bbox) >= 2.0
 
 
 class TestArrivalTimes:
