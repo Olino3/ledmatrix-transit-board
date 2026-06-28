@@ -7,6 +7,8 @@ which proves the renderer actually draws what it claims (not just mock calls).
 All tests are written BEFORE implementation (TDD RED phase).
 """
 
+from types import SimpleNamespace
+
 import pytest
 from PIL import Image
 
@@ -19,6 +21,32 @@ def _make_group(route_id="N", direction_label="Uptown/Queens", arrivals=None, co
         arrivals=arrivals if arrivals is not None else [2, 7, 15],
         color=color,
     )
+
+
+def _make_display_manager(width, height):
+    return SimpleNamespace(width=width, height=height)
+
+
+def _bbox_for_pixels(image, predicate):
+    points = [
+        (x, y)
+        for y in range(image.height)
+        for x in range(image.width)
+        if predicate(image.getpixel((x, y)))
+    ]
+    if not points:
+        return None
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return min(xs), min(ys), max(xs) + 1, max(ys) + 1
+
+
+def _bbox_height(bbox):
+    return bbox[3] - bbox[1]
+
+
+def _is_arrival_green(pixel):
+    return pixel[1] > 120 and pixel[0] < 80 and pixel[2] < 160
 
 
 class TestRouteBadge:
@@ -115,6 +143,56 @@ class TestAdaptiveDisplay:
 
         pixels = list(image.getdata())
         assert any(p != (0, 0, 0) for p in pixels), "Small display: renderer drew nothing"
+
+    def test_128x32_badge_uses_most_of_top_half(self):
+        """A two-panel 128x32 board should draw a large route badge, not a 10px badge."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 32))
+        group = _make_group(route_id="N", color="#FCCC0A")
+        image = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group, image)
+
+        badge_bbox = _bbox_for_pixels(image, lambda p: p == (0xFC, 0xCC, 0x0A))
+        assert badge_bbox is not None, "Expected route badge background pixels"
+        assert _bbox_height(badge_bbox) >= 14
+        assert badge_bbox[3] <= 18
+
+    def test_128x32_arrival_times_scale_larger_than_small_font(self):
+        """Arrival text should grow on a 128x32 board instead of using the tiny baseline font."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 32))
+        group = _make_group(arrivals=[5, 12, 18])
+        image = Image.new("RGB", (128, 32), (0, 0, 0))
+
+        renderer.draw_direction_group(group, image)
+
+        time_bbox = _bbox_for_pixels(image, _is_arrival_green)
+        assert time_bbox is not None, "Expected normal arrival time pixels"
+        assert time_bbox[1] >= 16
+        assert _bbox_height(time_bbox) >= 8
+
+    def test_128x64_layout_grows_without_clipping(self):
+        """Taller boards should scale badge and arrival text beyond 32px-board sizes."""
+        from transit.renderer import TransitRenderer
+
+        renderer = TransitRenderer(_make_display_manager(128, 64))
+        group = _make_group(route_id="N", arrivals=[5, 12, 18], color="#FCCC0A")
+        image = Image.new("RGB", (128, 64), (0, 0, 0))
+
+        renderer.draw_direction_group(group, image)
+
+        badge_bbox = _bbox_for_pixels(image, lambda p: p == (0xFC, 0xCC, 0x0A))
+        time_bbox = _bbox_for_pixels(image, _is_arrival_green)
+
+        assert badge_bbox is not None, "Expected route badge background pixels"
+        assert time_bbox is not None, "Expected normal arrival time pixels"
+        assert _bbox_height(badge_bbox) >= 26
+        assert _bbox_height(time_bbox) >= 13
+        assert badge_bbox[3] <= 34
+        assert time_bbox[3] <= 64
 
 
 class TestMaxArrivals:
