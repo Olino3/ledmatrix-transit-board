@@ -189,8 +189,8 @@ class TransitRenderer:
         max_size = max(min_size, min(48, round(max_height * 0.85)))
         for size in range(max_size, min_size - 1, -1):
             font = self._text_font_for_size(size)
-            first = self._measure(draw, font, label[:1] or "M")
-            if first.height <= max_height and first.width <= max_width:
+            measured = self._measure(draw, font, label or "M")
+            if measured.height <= max_height and measured.width <= max_width:
                 return font
         return self._text_font_for_size(min_size)
 
